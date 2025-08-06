@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "175275113236",
+    "project_id": "warehouse-data-autosync",
+    "storage_bucket": "warehouse-data-autosync.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:175275113236:android:95db7191cccda4364ee001",
+        "android_client_info": {
+          "package_name": "com.example.warehouse_data_autosync"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAcx9U-kf8IjG5jH7rNuHWtbl0imUeacqU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
