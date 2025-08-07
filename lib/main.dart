@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'package:warehouse_data_autosync/firebase_options.dart';
 
@@ -44,6 +45,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<DocumentSnapshot> items = [];
 
   bool get isOutgoing => notificationType == 'outgoing';
+  bool isSubmitting = false;
+  bool isLoadingItems = false;
 
   @override
   void initState() {
@@ -77,16 +80,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> fetchItems(String warehouseId) async {
+    setState(() {
+      isLoadingItems = true;
+      items = [];
+      selectedItem = null;
+      selectedItemId = null;
+    });
+
     final snapshot = await _firestore
         .collection('items')
         .where('warehouseId', isEqualTo: warehouseId)
         .get();
+
     final sorted = snapshot.docs
       ..sort((a, b) => a['name'].compareTo(b['name']));
+
     setState(() {
       items = sorted;
-      selectedItemId = null;
-      selectedItem = null;
+      isLoadingItems = false;
     });
   }
 
@@ -100,40 +111,73 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return;
     }
 
-    final itemDoc = selectedItem!;
-    final currentQty = itemDoc['quantity'] ?? 0;
+    setState(() => isSubmitting = true);
 
-    if (notificationType == 'outgoing') {
-      if (count > currentQty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Not enough stock for outgoing!')),
-        );
-        return;
-      }
-      await _firestore.collection('items').doc(selectedItemId).update({
-        'quantity': currentQty - count,
-        'updatedAt': DateTime.now().toIso8601String(),
+    try {
+      await _firestore.runTransaction((transaction) async {
+        final itemRef = _firestore.collection('items').doc(selectedItemId);
+        final snapshot = await transaction.get(itemRef);
+
+        if (!snapshot.exists) throw Exception('Item not found.');
+
+        final data = snapshot.data()!;
+        int currentQty = data['quantity'] ?? 0;
+        int newQty = currentQty;
+
+        if (notificationType == 'outgoing') {
+          if (count > currentQty) {
+            throw Exception('Not enough stock for outgoing!');
+          }
+          newQty -= count;
+        } else {
+          newQty += count;
+        }
+
+        transaction.update(itemRef, {
+          'quantity': newQty,
+          'updatedAt': DateTime.now().toIso8601String(),
+        });
+
+        final notificationRef = _firestore.collection('notifications').doc();
+        transaction.set(notificationRef, {
+          'id': const Uuid().v4(),
+          'type': notificationType,
+          'itemId': selectedItemId,
+          'count': count,
+          'warehouseId': selectedWarehouseId,
+          'locationId': selectedLocationId,
+          'updatedAt': DateTime.now().toIso8601String(),
+        });
       });
-    } else {
-      await _firestore.collection('items').doc(selectedItemId).update({
-        'quantity': currentQty + count,
-        'updatedAt': DateTime.now().toIso8601String(),
+
+      await refreshSelectedItem(selectedItemId!);
+
+      setState(() {
+        count = 1;
+        isSubmitting = false;
+      });
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Notification submitted.')));
+    } catch (e) {
+      setState(() => isSubmitting = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  Future<void> refreshSelectedItem(String itemId) async {
+    final updatedSnapshot = await _firestore
+        .collection('items')
+        .doc(itemId)
+        .get();
+    if (updatedSnapshot.exists) {
+      setState(() {
+        selectedItem = updatedSnapshot;
       });
     }
-
-    await _firestore.collection('notifications').add({
-      'id': const Uuid().v4(),
-      'type': notificationType,
-      'itemId': selectedItemId,
-      'count': count,
-      'warehouseId': selectedWarehouseId,
-      'locationId': selectedLocationId,
-      'updatedAt': DateTime.now().toIso8601String(),
-    });
-
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Notification submitted.')));
   }
 
   @override
@@ -143,7 +187,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
         : null;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Dashboard')),
+      appBar: AppBar(
+        title: const Text('Dashboard'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.list),
+            tooltip: 'View Notifications',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const NotificationListScreen(),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -196,6 +256,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: Text(doc['name']),
                 );
               }).toList(),
+              onTap: () {
+                if (selectedWarehouseId != null) {
+                  fetchItems(selectedWarehouseId!);
+                }
+              },
               onChanged: (value) {
                 final item = items.firstWhere((item) => item.id == value);
                 setState(() {
@@ -209,12 +274,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
               },
             ),
 
-            if (selectedItem != null)
+            if (selectedItem != null && !isLoadingItems)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
                   'Current Quantity: ${selectedItem!['quantity']}',
                   style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              )
+            else if (isLoadingItems)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: SizedBox(
+                  height: 16,
+                  width: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
                 ),
               ),
 
@@ -262,34 +336,157 @@ class _DashboardScreenState extends State<DashboardScreen> {
             // QUANTITY COUNTER
             Row(
               children: [
-                const Text('Quantity:'),
-                IconButton(
-                  icon: const Icon(Icons.remove),
-                  onPressed: (selectedItem == null || count <= 1)
-                      ? null
-                      : () => setState(() => count--),
+                Text('Quantity: '),
+                Expanded(
+                  child: IconButton(
+                    icon: const Icon(Icons.first_page), // Set to 0
+                    tooltip: 'Set to 0',
+                    onPressed: selectedItem == null
+                        ? null
+                        : () => setState(() => count = 0),
+                  ),
                 ),
-                Text('$count'),
-                IconButton(
-                  icon: const Icon(Icons.add),
-                  onPressed:
-                      (selectedItem == null ||
-                          (isOutgoing &&
-                              count >= (selectedItem!['quantity'] ?? 0)) ||
-                          (!isOutgoing && count >= 50))
-                      ? null
-                      : () => setState(() => count++),
+                Expanded(
+                  child: IconButton(
+                    icon: const Icon(Icons.remove),
+                    onPressed: (selectedItem == null || count <= 0)
+                        ? null
+                        : () => setState(() => count--),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    '$count',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+                Expanded(
+                  child: IconButton(
+                    icon: const Icon(Icons.add),
+                    onPressed:
+                        (selectedItem == null ||
+                            (isOutgoing &&
+                                count >= (selectedItem!['quantity'] ?? 0)) ||
+                            (!isOutgoing && count >= 50))
+                        ? null
+                        : () => setState(() => count++),
+                  ),
+                ),
+                Expanded(
+                  child: IconButton(
+                    icon: const Icon(Icons.last_page), // Set to max
+                    tooltip: 'Set to Max',
+                    onPressed: (selectedItem == null || !isOutgoing)
+                        ? null
+                        : () => setState(() {
+                            count = selectedItem!['quantity'] ?? 0;
+                          }),
+                  ),
                 ),
               ],
             ),
 
             const SizedBox(height: 24),
             ElevatedButton(
-              onPressed: selectedItem == null ? null : submitNotification,
-              child: const Text('Submit Notification'),
+              onPressed:
+                  (selectedItem == null || isSubmitting || isLoadingItems)
+                  ? null
+                  : submitNotification,
+              child: (isSubmitting || isLoadingItems)
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Submit Notification'),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class NotificationListScreen extends StatelessWidget {
+  const NotificationListScreen({super.key});
+
+  Future<String> getNameById(String collection, String id) async {
+    final doc = await FirebaseFirestore.instance
+        .collection(collection)
+        .doc(id)
+        .get();
+    return doc.exists ? doc['name'] : 'Unknown';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final firestore = FirebaseFirestore.instance;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Notifications')),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: firestore
+            .collection('notifications')
+            .orderBy('updatedAt', descending: true)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final notifications = snapshot.data!.docs;
+
+          return ListView.separated(
+            itemCount: notifications.length,
+            separatorBuilder: (_, __) => const Divider(height: 0),
+            itemBuilder: (context, index) {
+              final doc = notifications[index];
+              final type = doc['type'];
+              final count = doc['count'];
+              final itemId = doc['itemId'];
+              final warehouseId = doc['warehouseId'];
+              final locationId = doc['locationId'];
+              final updatedAt = DateTime.parse(doc['updatedAt']);
+              final dateStr = DateFormat(
+                'dd MMM yyyy, hh:mm a',
+              ).format(updatedAt);
+
+              return FutureBuilder(
+                future: Future.wait([
+                  getNameById('items', itemId),
+                  getNameById('warehouses', warehouseId),
+                  getNameById('locations', locationId),
+                ]),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const ListTile(title: Text('Loading...'));
+                  }
+
+                  final itemName = snapshot.data![0];
+                  final warehouseName = snapshot.data![1];
+                  final locationName = snapshot.data![2];
+
+                  return ListTile(
+                    leading: Icon(
+                      type == 'incoming'
+                          ? Icons.arrow_downward
+                          : Icons.arrow_upward,
+                      color: type == 'incoming' ? Colors.green : Colors.red,
+                    ),
+                    title: Text(
+                      '$itemName (${type == 'incoming' ? '+' : '-'}$count)',
+                    ),
+                    subtitle: Text(
+                      '$warehouseName, $locationName\n$dateStr',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  );
+                },
+              );
+            },
+          );
+        },
       ),
     );
   }
