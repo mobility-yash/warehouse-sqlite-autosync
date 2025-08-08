@@ -35,30 +35,42 @@ class SyncController extends GetxController {
   }
 
   Future<void> _setupInitialState() async {
-    for (final table in YArrays.allTables) {
-      tableSyncing[table] = false;
-      tableSynced[table] =
-          prefs.getBool('${YStrings.syncStatusPrefix}$table') ?? false;
-    }
+    final localMetadata = await dbClient.getSyncMetadataMap();
+    final isMetadataEmpty = localMetadata.isEmpty;
 
-    if (isFirstLaunch) {
-      await _performFullSync();
+    if (isMetadataEmpty) {
+      debugPrint('[SyncController] First launch detected — metadata empty');
+      for (final table in YArrays.allTables) {
+        tableSyncing[table] = false;
+        tableSynced[table] =
+            prefs.getBool('${YStrings.syncStatusPrefix}$table') ?? false;
+      }
+      await _performFirstTimeSync();
     } else {
+      debugPrint('[SyncController] Subsequent launch — checking metadata');
       await _checkSyncMetadataAndDecide();
     }
   }
 
-  /// First-time full sync of all tables
-  Future<void> _performFullSync() async {
+  /// First-time sync in defined order
+  Future<void> _performFirstTimeSync() async {
     isLoading.value = true;
-    debugPrint('[SyncController] Performing full sync...');
+    debugPrint('[SyncController] Performing first-time sync sequence...');
+
+    final syncOrder = [
+      YStrings.locations,
+      YStrings.warehouses,
+      YStrings.items,
+      YStrings.notifications,
+    ];
 
     bool allSuccess = true;
 
-    for (final table in YArrays.allTables) {
+    for (final table in syncOrder) {
       final success = await _syncTable(table, isFirstTime: true);
       if (!success) {
         allSuccess = false;
+        await dbClient.updateSyncMetadata(table, null);
       }
     }
 
@@ -80,15 +92,14 @@ class SyncController extends GetxController {
         prefs.getBool(YStrings.lastInitSyncSuccess) ?? false;
 
     if (!lastSyncSuccess) {
-      // last sync failed → redo full sync
-      await _performFullSync();
+      debugPrint(
+        '[SyncController] Last initial sync failed — redoing first-time sync',
+      );
+      await _performFirstTimeSync();
       return;
     }
 
-    // Get local metadata
     final localMetadata = await dbClient.getSyncMetadataMap();
-
-    // Fetch remote metadata from Firebase
     final remoteMetadata = await firebaseClient.fetchSyncMetadata();
 
     bool anyNeedsSync = false;
@@ -98,9 +109,7 @@ class SyncController extends GetxController {
 
       if (remoteUpdatedAt != null &&
           (localUpdatedAt == null || remoteUpdatedAt.isAfter(localUpdatedAt))) {
-        debugPrint(
-          '[SyncController] Table $table has outdated data. Needs sync.',
-        );
+        debugPrint('[SyncController] $table needs sync');
         anyNeedsSync = true;
         tableSynced[table] = false;
       }
@@ -121,7 +130,6 @@ class SyncController extends GetxController {
       final data = await firebaseClient.fetchTableData(table);
 
       if (table == YStrings.notifications) {
-        // Add synced = 1 manually for notifications
         final processedData = data.map((row) {
           row['synced'] = 1;
           return row;
@@ -131,7 +139,6 @@ class SyncController extends GetxController {
         await dbClient.insertOrUpdateTable(table, data);
       }
 
-      // Update local sync metadata row for this table
       final remoteUpdatedAt = await firebaseClient.getTableUpdatedAt(table);
       await dbClient.updateSyncMetadata(table, remoteUpdatedAt);
 
