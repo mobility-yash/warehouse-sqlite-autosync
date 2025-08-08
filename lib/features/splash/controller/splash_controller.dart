@@ -56,12 +56,20 @@ class SplashController extends GetxController {
 
     bool anyTableNeedsSync = false;
 
-    final tableChecks = {
-      YStrings.locations: await dbClient.isLocationsTableNotEmpty(),
-      YStrings.warehouses: await dbClient.isWarehousesTableNotEmpty(),
-      YStrings.items: await dbClient.isItemsTableNotEmpty(),
-      YStrings.notifications: await dbClient.isNotificationsTableNotEmpty(),
-    };
+    final tableChecks = <String, bool>{};
+
+    try {
+      tableChecks[YStrings.locations] = await dbClient
+          .isLocationsTableNotEmpty();
+      tableChecks[YStrings.warehouses] = await dbClient
+          .isWarehousesTableNotEmpty();
+      tableChecks[YStrings.items] = await dbClient.isItemsTableNotEmpty();
+      tableChecks[YStrings.notifications] = await dbClient
+          .isNotificationsTableNotEmpty();
+    } catch (e, stack) {
+      debugPrint('[SplashController] ERROR checking DB tables: $e');
+      debugPrint(stack.toString());
+    }
 
     debugPrint('[SplashController] Table data presence check: $tableChecks');
 

@@ -23,5 +23,5 @@ Future<void> initDependencies() async {
   Get.put<SharedPreferencesClient>(sharedPrefClient);
 
   // SQLite
-  Get.lazyPut<DatabaseClient>(() => DatabaseClientImpl());
+  Get.put<DatabaseClient>(DatabaseClientImpl());
 }

@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:warehouse_data_autosync/core/routes/app_pages.dart';
 import 'package:warehouse_data_autosync/core/routes/app_routes.dart';
+import 'package:warehouse_data_autosync/dependency_injection.dart';
 import 'package:warehouse_data_autosync/firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  initDependencies();
   runApp(const MyApp());
 }
 
