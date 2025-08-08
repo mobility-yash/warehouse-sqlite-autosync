@@ -357,15 +357,17 @@ class DatabaseClientImpl extends DatabaseClient {
     final db = await database;
     final batch = db.batch();
     for (final n in notifications) {
+      final map = n.toMap();
+      map['synced'] = 1;
       batch.insert(
         'notifications',
-        n.toMap(),
+        map,
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     }
     await batch.commit(noResult: true);
     debugPrint(
-      '[DatabaseClientImpl] Inserted ${notifications.length} notifications.',
+      '[DatabaseClientImpl] Inserted ${notifications.length} notifications (marked as synced).',
     );
   }
 
@@ -500,4 +502,62 @@ class DatabaseClientImpl extends DatabaseClient {
         entity: 'notifications',
         lastUpdatedAt: lastUpdatedAt,
       );
+
+  @override
+  Future<Map<String, DateTime?>> getSyncMetadataMap() async {
+    final db = await database;
+    final rows = await db.query('sync_metadata');
+
+    final map = <String, DateTime?>{};
+    for (final row in rows) {
+      final entity = row['entity'] as String;
+      final tsString = row['lastUpdatedAt'] as String?;
+      map[entity] = tsString != null ? DateTime.tryParse(tsString) : null;
+    }
+
+    debugPrint('[DatabaseClientImpl] getSyncMetadataMap -> $map');
+    return map;
+  }
+
+  @override
+  Future<void> insertOrUpdateTable(
+    String table,
+    List<Map<String, dynamic>> data,
+  ) async {
+    if (data.isEmpty) {
+      debugPrint(
+        '[DatabaseClientImpl] insertOrUpdateTable: No data for $table',
+      );
+      return;
+    }
+    final db = await database;
+    final batch = db.batch();
+    for (final row in data) {
+      batch.insert(table, row, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    await batch.commit(noResult: true);
+    debugPrint(
+      '[DatabaseClientImpl] insertOrUpdateTable: Upserted ${data.length} rows into $table',
+    );
+  }
+
+  @override
+  Future<void> updateSyncMetadata(
+    String entity,
+    DateTime? lastUpdatedAt,
+  ) async {
+    final db = await database;
+    await db.update(
+      'sync_metadata',
+      {
+        'lastUpdatedAt': lastUpdatedAt
+            ?.toIso8601String(), // store null if no date
+      },
+      where: 'entity = ?',
+      whereArgs: [entity],
+    );
+    debugPrint(
+      '[DatabaseClientImpl] updateSyncMetadata for $entity -> ${lastUpdatedAt?.toIso8601String() ?? "null"}',
+    );
+  }
 }
