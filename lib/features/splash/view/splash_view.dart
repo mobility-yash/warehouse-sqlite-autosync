@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:warehouse_data_autosync/core/constants/assets.dart';
+import 'package:warehouse_data_autosync/core/constants/constants.dart';
 
 class SplashView extends StatelessWidget {
   const SplashView({super.key});

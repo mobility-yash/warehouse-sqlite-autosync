@@ -21,6 +21,7 @@ class MyApp extends StatelessWidget {
       title: 'Warehouse SQLite App',
       navigatorKey: Get.key,
       initialRoute: AppRoutes.splash,
+      // initialRoute: AppRoutes.dummyDataUploader,
       getPages: AppPages.routes,
       smartManagement: SmartManagement.full,
     );

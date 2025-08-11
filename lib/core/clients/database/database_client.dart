@@ -47,4 +47,11 @@ abstract class DatabaseClient {
   Future<void> updateWarehousesSync(String lastUpdatedAt);
   Future<void> updateItemsSync(String lastUpdatedAt);
   Future<void> updateNotificationsSync(String lastUpdatedAt);
+
+  Future<Map<String, DateTime?>> getSyncMetadataMap();
+  Future<void> insertOrUpdateTable(
+    String table,
+    List<Map<String, dynamic>> data,
+  );
+  Future<void> updateSyncMetadata(String entity, DateTime? lastUpdatedAt);
 }

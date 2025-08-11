@@ -191,7 +191,14 @@ class _DashboardViewState extends State<DashboardView> {
               items: locations.map((doc) {
                 return DropdownMenuItem<String>(
                   value: doc.id,
-                  child: Text(doc['name']),
+                  child: SizedBox(
+                    width: MediaQuery.of(context).size.width * 0.7,
+                    child: Text(
+                      doc['name'],
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ),
                 );
               }).toList(),
               onChanged: (value) {
@@ -210,7 +217,14 @@ class _DashboardViewState extends State<DashboardView> {
               items: warehouses.map((doc) {
                 return DropdownMenuItem<String>(
                   value: doc.id,
-                  child: Text(doc['name']),
+                  child: SizedBox(
+                    width: MediaQuery.of(context).size.width * 0.7,
+                    child: Text(
+                      doc['name'],
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ),
                 );
               }).toList(),
               onChanged: (value) {
@@ -229,7 +243,14 @@ class _DashboardViewState extends State<DashboardView> {
               items: items.map((doc) {
                 return DropdownMenuItem<String>(
                   value: doc.id,
-                  child: Text(doc['name']),
+                  child: SizedBox(
+                    width: MediaQuery.of(context).size.width * 0.7,
+                    child: Text(
+                      doc['name'],
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ),
                 );
               }).toList(),
               onTap: () {
