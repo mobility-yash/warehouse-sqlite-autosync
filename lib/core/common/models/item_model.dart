@@ -47,4 +47,33 @@ class ItemModel {
       'updatedAt': updatedAt,
     };
   }
+
+  factory ItemModel.empty() {
+    return ItemModel(
+      id: '',
+      name: '',
+      warehouseId: '',
+      locationId: '',
+      quantity: 0,
+      updatedAt: '',
+    );
+  }
+
+  ItemModel copyWith({
+    String? id,
+    String? name,
+    String? warehouseId,
+    String? locationId,
+    int? quantity,
+    String? updatedAt,
+  }) {
+    return ItemModel(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      warehouseId: warehouseId ?? this.warehouseId,
+      locationId: locationId ?? this.locationId,
+      quantity: quantity ?? this.quantity,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
 }

@@ -79,7 +79,6 @@ class SyncController extends GetxController {
     isLoading.value = false;
 
     if (allSuccess) {
-      // Get.offAllNamed(AppRoutes.dashboard);
       debugPrint('[SyncController] All tables success in first-time syncing.');
     } else {
       debugPrint('[SyncController] Some tables failed during first-time sync.');
@@ -141,7 +140,7 @@ class SyncController extends GetxController {
     isLoading.value = false;
 
     if (!anyNeedsSync) {
-      Get.offAllNamed(AppRoutes.dashboard);
+      continueToDashboard();
     }
   }
 
@@ -193,5 +192,9 @@ class SyncController extends GetxController {
         await _syncTable(table);
       }
     }
+  }
+
+  void continueToDashboard() {
+    Get.offAllNamed(AppRoutes.dashboard);
   }
 }

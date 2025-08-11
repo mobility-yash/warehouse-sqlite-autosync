@@ -3,8 +3,6 @@ import 'package:get/get.dart';
 import 'package:warehouse_data_autosync/core/constants/constants.dart';
 import 'package:warehouse_data_autosync/features/sync/controller/sync_controller.dart';
 
-import '../../../core/routes/app_routes.dart';
-
 class SyncView extends GetView<SyncController> {
   const SyncView({super.key});
 
@@ -63,9 +61,7 @@ class SyncView extends GetView<SyncController> {
 
             if (allSynced)
               ElevatedButton(
-                onPressed: () {
-                  Get.offNamed(AppRoutes.dashboard);
-                },
+                onPressed: controller.continueToDashboard,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue,
                   foregroundColor: Colors.white,
