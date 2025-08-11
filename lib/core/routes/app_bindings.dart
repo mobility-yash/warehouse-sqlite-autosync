@@ -7,6 +7,8 @@ import 'package:warehouse_data_autosync/features/dashboard/controller/dashboard_
 import 'package:warehouse_data_autosync/features/splash/controller/splash_controller.dart';
 import 'package:warehouse_data_autosync/features/sync/controller/sync_controller.dart';
 
+import '../../features/notification_list/controller/notification_list_controller.dart';
+
 class SplashBinding extends Bindings {
   @override
   void dependencies() {
@@ -23,12 +25,14 @@ class SyncBinding extends Bindings {
     final dbClient = Get.find<DatabaseClient>();
     final sharedPrefs = Get.find<SharedPreferences>();
     final firebasePrefs = Get.find<FirebaseClient>();
+    final connectivityClient = Get.find<ConnectivityClient>();
 
     Get.put(
       SyncController(
         dbClient: dbClient,
         firebaseClient: firebasePrefs,
         prefs: sharedPrefs,
+        connectivityClient: connectivityClient,
       ),
     );
   }
@@ -55,5 +59,8 @@ class DashboardBinding extends Bindings {
 
 class NotificationListBinding extends Bindings {
   @override
-  void dependencies() {}
+  void dependencies() {
+    final dbClient = Get.find<DatabaseClient>();
+    Get.put(NotificationListController(dbClient: dbClient));
+  }
 }

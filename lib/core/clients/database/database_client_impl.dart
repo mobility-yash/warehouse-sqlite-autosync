@@ -353,6 +353,17 @@ class DatabaseClientImpl extends DatabaseClient {
 
   // Notifications
   @override
+  Future<List<NotificationModel>> getNotifications() async {
+    final db = await database;
+    final maps = await db.query(
+      YStrings.notifications,
+      orderBy: '${YStrings.colUpdatedAt} DESC',
+    );
+    debugPrint('[DatabaseClientImpl] getNotifications: found ${maps.length}');
+    return maps.map(NotificationModel.fromDb).toList();
+  }
+
+  @override
   Future<void> insertNotifications(
     List<NotificationModel> notifications,
   ) async {

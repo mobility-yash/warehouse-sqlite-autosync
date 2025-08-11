@@ -9,7 +9,6 @@ class YStrings {
   static const firstTimeLaunch = 'first_time_launch';
   static const lastInitSyncSuccess = 'last_init_sync_success';
   static const syncStatusPrefix = 'sync_status_';
-  static const lastSyncPrefix = 'last_sync_';
 
   // -------------------------
   // Table / Collection names

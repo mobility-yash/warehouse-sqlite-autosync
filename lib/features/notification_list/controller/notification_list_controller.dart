@@ -9,10 +9,9 @@ import 'package:warehouse_data_autosync/core/constants/constants.dart';
 class NotificationListController extends GetxController {
   final DatabaseClient dbClient;
 
-  // Pass dbClient from outside
   NotificationListController({required this.dbClient});
 
-  // Reactive state variables for selections
+  // Form and selection state
   var selectedLocationId = RxnString();
   var selectedWarehouseId = RxnString();
   var selectedItemId = RxnString();
@@ -20,10 +19,13 @@ class NotificationListController extends GetxController {
   var notificationType = YStrings.transactionIncoming.obs;
   var count = 1.obs;
 
-  // Lists for dropdowns
+  // Dropdown list data
   var locations = <Map<String, dynamic>>[].obs;
   var warehouses = <Map<String, dynamic>>[].obs;
   var items = <Map<String, dynamic>>[].obs;
+
+  // Notifications list
+  var notifications = <NotificationModel>[].obs;
 
   // Loading indicators
   var isSubmitting = false.obs;
@@ -33,9 +35,31 @@ class NotificationListController extends GetxController {
 
   @override
   void onInit() {
+    debugPrint("[NotificationListController] onInit() called");
     super.onInit();
-    debugPrint("[NotificationController] onInit() called");
     fetchLocations();
+    fetchNotifications();
+  }
+
+  Future<void> fetchNotifications() async {
+    debugPrint("[fetchNotifications] Fetching notifications from local DB...");
+    final notifModels = await dbClient.getNotifications();
+    debugPrint(
+      "[fetchNotifications] Found ${notifModels.length} notifications in DB",
+    );
+
+    // Sort unsynced first, then by most recent
+    notifModels.sort((a, b) {
+      if (a.synced != b.synced) {
+        return a.synced ? 1 : -1;
+      }
+      return DateTime.parse(b.updatedAt).compareTo(DateTime.parse(a.updatedAt));
+    });
+
+    notifications.value = notifModels;
+    debugPrint(
+      "[fetchNotifications] Updated observable list with ${notifications.length} notifications",
+    );
   }
 
   Future<void> fetchLocations() async {
@@ -48,11 +72,13 @@ class NotificationListController extends GetxController {
         .map((loc) => {YStrings.colId: loc.id, YStrings.colName: loc.name})
         .toList();
 
-    debugPrint("[fetchLocations] Locations loaded: $locations");
+    debugPrint("[fetchLocations] Locations loaded into observable list");
   }
 
   Future<void> fetchWarehouses(String locationId) async {
-    debugPrint("[fetchWarehouses] Location ID: $locationId");
+    debugPrint(
+      "[fetchWarehouses] Fetching warehouses for locationId: $locationId",
+    );
     final warehouseModels = await dbClient.getWarehousesByLocationId(
       locationId,
     );
@@ -63,23 +89,18 @@ class NotificationListController extends GetxController {
         .map((w) => {YStrings.colId: w.id, YStrings.colName: w.name})
         .toList();
 
-    // Reset selections when location changes
+    // Reset selections
     selectedWarehouseId.value = null;
     items.clear();
     selectedItemId.value = null;
     selectedItem.value = null;
 
-    debugPrint("[fetchWarehouses] Warehouses loaded: $warehouses");
+    debugPrint("[fetchWarehouses] Warehouses list updated");
   }
 
   Future<void> fetchItems(String warehouseId) async {
-    debugPrint("[fetchItems] Warehouse ID: $warehouseId");
+    debugPrint("[fetchItems] Fetching items for warehouseId: $warehouseId");
     isLoadingItems.value = true;
-
-    items.clear();
-    selectedItem.value = null;
-    selectedItemId.value = null;
-
     final itemModels = await dbClient.getItemsByWarehouseId(warehouseId);
     debugPrint("[fetchItems] Found ${itemModels.length} items");
 
@@ -94,60 +115,54 @@ class NotificationListController extends GetxController {
         )
         .toList();
 
-    debugPrint("[fetchItems] Items loaded: $items");
     isLoadingItems.value = false;
+    debugPrint("[fetchItems] Items loaded into observable list");
   }
 
   Future<void> submitNotification() async {
     debugPrint("[submitNotification] Starting submission...");
 
-    // Check if all fields are selected
     if (selectedItemId.value == null ||
         selectedWarehouseId.value == null ||
         selectedLocationId.value == null) {
-      debugPrint("[submitNotification] Missing fields!");
+      debugPrint("[submitNotification] Missing required fields");
       Get.snackbar('Error', 'Please select all fields.');
       return;
     }
 
     isSubmitting.value = true;
-
     try {
-      debugPrint("[submitNotification] Fetching current item data...");
+      debugPrint("[submitNotification] Retrieving current item data...");
       final allItems = await dbClient.getItemsByWarehouseId(
         selectedWarehouseId.value!,
       );
       final item = allItems.firstWhere((i) => i.id == selectedItemId.value);
 
-      debugPrint(
-        "[submitNotification] Current item: ${item.name}, qty: ${item.quantity}",
-      );
-
       int currentQty = item.quantity;
+      debugPrint("[submitNotification] Current qty: $currentQty");
       int newQty = currentQty;
 
-      // Adjust stock based on type
       if (isOutgoing) {
         if (count.value > currentQty) {
+          debugPrint("[submitNotification] Not enough stock!");
           throw Exception(YStrings.errNotEnoughStock);
         }
         newQty -= count.value;
       } else {
         newQty += count.value;
       }
+      debugPrint("[submitNotification] New qty after transaction: $newQty");
 
-      debugPrint("[submitNotification] New quantity: $newQty");
-
-      // Update item in DB
+      // Update item
       await dbClient.insertItems([
         item.copyWith(
           quantity: newQty,
           updatedAt: DateTime.now().toIso8601String(),
         ),
       ]);
-      debugPrint("[submitNotification] Item quantity updated");
+      debugPrint("[submitNotification] Item updated in DB");
 
-      // Insert notification in DB
+      // Insert notification
       await dbClient.insertNotifications([
         NotificationModel(
           id: const Uuid().v4(),
@@ -160,11 +175,14 @@ class NotificationListController extends GetxController {
           synced: false,
         ),
       ]);
-      debugPrint("[submitNotification] Notification inserted");
+      debugPrint(
+        "[submitNotification] Notification inserted into DB (synced=0)",
+      );
 
       await refreshSelectedItem(selectedItemId.value!);
       count.value = 1;
       Get.snackbar('Success', 'Notification submitted.');
+      await fetchNotifications();
     } catch (e) {
       debugPrint("[submitNotification] Error: $e");
       Get.snackbar('Error', e.toString());
@@ -175,7 +193,7 @@ class NotificationListController extends GetxController {
   }
 
   Future<void> refreshSelectedItem(String itemId) async {
-    debugPrint("[refreshSelectedItem] Refreshing item: $itemId");
+    debugPrint("[refreshSelectedItem] Refreshing itemId: $itemId");
     final allItems = await dbClient.getItemsByWarehouseId(
       selectedWarehouseId.value!,
     );
@@ -183,13 +201,11 @@ class NotificationListController extends GetxController {
       (i) => i.id == itemId,
       orElse: () => ItemModel.empty(),
     );
-
     selectedItem.value = {
       YStrings.colId: updatedItem.id,
       YStrings.colName: updatedItem.name,
       YStrings.colQuantity: updatedItem.quantity,
     };
-
-    debugPrint("[refreshSelectedItem] Updated item: $selectedItem");
+    debugPrint("[refreshSelectedItem] Updated item in selection");
   }
 }

@@ -12,9 +12,8 @@ class SyncView extends GetView<SyncController> {
       appBar: AppBar(title: const Text('Data Sync')),
       body: Obx(() {
         final allTables = YArrays.allTables;
-
         final allSynced = allTables.every(
-          (table) => controller.tableSynced[table] ?? false,
+          (table) => controller.tableSynced[table] == true,
         );
 
         return ListView(
@@ -34,32 +33,23 @@ class SyncView extends GetView<SyncController> {
                           : Colors.red,
                     ),
                   ),
-                  trailing: controller.tableSyncing[table] == true
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : (controller.tableSynced[table] == false)
-                      ? ElevatedButton(
-                          onPressed: () => controller.resyncTable(table),
-                          child: const Text('Resync'),
-                        )
-                      : const Icon(Icons.check, color: Colors.green),
+                  trailing: _buildTrailingIcon(controller, table),
                 ),
               ),
 
-            if (!allSynced) ...[
-              const SizedBox(height: 20),
+            const SizedBox(height: 20),
+
+            // Only show this when NOT loading and at least one failed
+            if (!controller.isLoading.value &&
+                controller.tableSynced.values.contains(false))
               ElevatedButton(
                 onPressed: controller.resyncFailedTables,
                 child: const Text('Resync All Failed'),
               ),
-            ],
 
             const SizedBox(height: 20),
 
-            if (allSynced)
+            if (allSynced && !controller.isLoading.value)
               ElevatedButton(
                 onPressed: controller.continueToDashboard,
                 style: ElevatedButton.styleFrom(
@@ -72,5 +62,24 @@ class SyncView extends GetView<SyncController> {
         );
       }),
     );
+  }
+
+  Widget _buildTrailingIcon(SyncController c, String table) {
+    if (c.tableSyncing[table] == true) {
+      // Currently syncing
+      return const SizedBox(
+        width: 24,
+        height: 24,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+
+    if (c.tableSynced[table] == true) {
+      // Success
+      return const Icon(Icons.check, color: Colors.green);
+    } else {
+      // Failed
+      return const Icon(Icons.close, color: Colors.red);
+    }
   }
 }

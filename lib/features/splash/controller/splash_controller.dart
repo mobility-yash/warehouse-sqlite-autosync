@@ -82,7 +82,6 @@ class SplashController extends GetxController {
           '[SplashController] Table "$table" is empty. Marking as not synced.',
         );
         await prefs.setBool('${YStrings.syncStatusPrefix}$table', false);
-        await prefs.remove('${YStrings.lastSyncPrefix}$table');
         anyTableNeedsSync = true;
       } else {
         final status =

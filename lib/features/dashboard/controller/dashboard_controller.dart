@@ -179,21 +179,41 @@ class DashboardController extends GetxController {
             locationId: selectedLocationId.value!,
           );
 
-          // Save locally as synced
-          await dbClient.insertItems([updatedItem.copyWith(synced: true)]);
-          await dbClient.insertNotifications([
-            newNotification.copyWith(synced: true),
-          ]);
+          try {
+            // Save locally as synced
+            await dbClient.insertItems([updatedItem.copyWith(synced: true)]);
+            await dbClient.insertNotifications([
+              newNotification.copyWith(synced: true),
+            ]);
+          } catch (localSaveError) {
+            debugPrint(
+              "[submitNotification] Local save after Firebase success failed: $localSaveError",
+            );
+            // On failure here, mark sync flags false because data not saved properly
+            await _resetSyncFlags();
+            rethrow; // Rethrow if you want outer catch to handle snack etc.
+          }
 
           debugPrint(
             "[submitNotification] Data synced with Firebase and saved locally.",
           );
-        } catch (e) {
-          debugPrint("[submitNotification] Firebase sync failed: $e");
+        } catch (firebaseError) {
+          debugPrint(
+            "[submitNotification] Firebase sync failed: $firebaseError",
+          );
 
-          // Save locally as unsynced
-          await dbClient.insertItems([updatedItem]);
-          await dbClient.insertNotifications([newNotification]);
+          try {
+            // Save locally as unsynced on firebase failure
+            await dbClient.insertItems([updatedItem]);
+            await dbClient.insertNotifications([newNotification]);
+          } catch (localSaveError) {
+            debugPrint(
+              "[submitNotification] Local save after Firebase failure also failed: $localSaveError",
+            );
+          }
+
+          // Reset sync flags in prefs and state because sync failed
+          await _resetSyncFlags();
 
           Get.snackbar(
             'Warning',
@@ -201,9 +221,19 @@ class DashboardController extends GetxController {
           );
         }
       } else {
-        // No network - save locally as unsynced
-        await dbClient.insertItems([updatedItem]);
-        await dbClient.insertNotifications([newNotification]);
+        try {
+          // No network - save locally as unsynced
+          await dbClient.insertItems([updatedItem]);
+          await dbClient.insertNotifications([newNotification]);
+        } catch (localSaveError) {
+          debugPrint(
+            "[submitNotification] Local save failed with no network: $localSaveError",
+          );
+        }
+
+        // Reset sync flags because no network, definitely not synced
+        await _resetSyncFlags();
+
         debugPrint(
           "[submitNotification] No network - saved locally with synced=false.",
         );
@@ -228,6 +258,16 @@ class DashboardController extends GetxController {
       isSubmitting.value = false;
       debugPrint("[submitNotification] Submission complete");
     }
+  }
+
+  // Helper method to reset sync status prefs and tableSynced flags
+  Future<void> _resetSyncFlags() async {
+    await prefs.setBool('${YStrings.syncStatusPrefix}${YStrings.items}', false);
+    await prefs.setBool(
+      '${YStrings.syncStatusPrefix}${YStrings.notifications}',
+      false,
+    );
+    await prefs.setBool(YStrings.lastInitSyncSuccess, false);
   }
 
   Future<void> refreshSelectedItem(String itemId) async {

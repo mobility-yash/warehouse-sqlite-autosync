@@ -1,87 +1,113 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+
+import '../controller/notification_list_controller.dart';
 
 class NotificationListView extends StatelessWidget {
   const NotificationListView({super.key});
 
-  Future<String> getNameById(String collection, String id) async {
-    final doc = await FirebaseFirestore.instance
-        .collection(collection)
-        .doc(id)
-        .get();
-    return doc.exists ? doc['name'] : 'Unknown';
-  }
-
   @override
   Widget build(BuildContext context) {
-    final firestore = FirebaseFirestore.instance;
+    final controller = Get.find<NotificationListController>();
+    debugPrint("[NotificationListView] Building UI");
 
     return Scaffold(
       appBar: AppBar(title: const Text('Notifications')),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: firestore
-            .collection('notifications')
-            .orderBy('updatedAt', descending: true)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      body: Obx(() {
+        debugPrint(
+          "[NotificationListView] Notifications count: ${controller.notifications.length}",
+        );
 
-          final notifications = snapshot.data!.docs;
+        if (controller.notifications.isEmpty) {
+          debugPrint("[NotificationListView] No notifications found");
+          return const Center(child: Text("No notifications found"));
+        }
 
-          return ListView.separated(
-            itemCount: notifications.length,
-            separatorBuilder: (_, __) => const Divider(height: 0),
+        return RefreshIndicator(
+          onRefresh: () async {
+            debugPrint("[NotificationListView] Pull-to-refresh triggered");
+            await controller.fetchNotifications();
+          },
+          child: ListView.builder(
+            padding: const EdgeInsets.all(8),
+            itemCount: controller.notifications.length,
             itemBuilder: (context, index) {
-              final doc = notifications[index];
-              final type = doc['type'];
-              final count = doc['count'];
-              final itemId = doc['itemId'];
-              final warehouseId = doc['warehouseId'];
-              final locationId = doc['locationId'];
-              final updatedAt = DateTime.parse(doc['updatedAt']);
+              final notif = controller.notifications[index];
+              debugPrint(
+                "[NotificationListView] Rendering notification index $index -> ${notif.id}",
+              );
+
+              final synced = notif.synced;
               final dateStr = DateFormat(
                 'dd MMM yyyy, hh:mm a',
-              ).format(updatedAt);
+              ).format(DateTime.parse(notif.updatedAt));
 
-              return FutureBuilder(
-                future: Future.wait([
-                  getNameById('items', itemId),
-                  getNameById('warehouses', warehouseId),
-                  getNameById('locations', locationId),
-                ]),
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
-                    return const ListTile(title: Text('Loading...'));
-                  }
-
-                  final itemName = snapshot.data![0];
-                  final warehouseName = snapshot.data![1];
-                  final locationName = snapshot.data![2];
-
-                  return ListTile(
-                    leading: Icon(
-                      type == 'incoming'
-                          ? Icons.arrow_downward
-                          : Icons.arrow_upward,
-                      color: type == 'incoming' ? Colors.green : Colors.red,
-                    ),
-                    title: Text(
-                      '$itemName (${type == 'incoming' ? '+' : '-'}$count)',
-                    ),
-                    subtitle: Text(
-                      '$warehouseName, $locationName\n$dateStr',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  );
-                },
+              return Card(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  side: BorderSide(
+                    color: synced ? Colors.green : Colors.orange,
+                    width: 1.5,
+                  ),
+                ),
+                elevation: 2,
+                margin: const EdgeInsets.symmetric(vertical: 6),
+                child: ListTile(
+                  leading: Icon(
+                    notif.type == 'incoming'
+                        ? Icons.arrow_downward
+                        : Icons.arrow_upward,
+                    color: notif.type == 'incoming'
+                        ? Colors.green.shade700
+                        : Colors.red,
+                  ),
+                  title: Text(
+                    "${notif.itemId} (${notif.type == 'incoming' ? '+' : '-'}${notif.count})",
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "${notif.warehouseId}, ${notif.locationId}",
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        dateStr,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            synced ? Icons.cloud_done : Icons.cloud_upload,
+                            size: 14,
+                            color: synced ? Colors.green : Colors.orange,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            synced ? "Synced" : "Pending Sync",
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: synced ? Colors.green : Colors.orange,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
               );
             },
-          );
-        },
-      ),
+          ),
+        );
+      }),
     );
   }
 }
