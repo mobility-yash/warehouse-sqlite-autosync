@@ -1,3 +1,5 @@
+part of 'constants.dart';
+
 class YImages {
   YImages._();
 

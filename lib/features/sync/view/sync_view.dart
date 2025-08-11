@@ -3,6 +3,8 @@ import 'package:get/get.dart';
 import 'package:warehouse_data_autosync/core/constants/constants.dart';
 import 'package:warehouse_data_autosync/features/sync/controller/sync_controller.dart';
 
+import '../../../core/routes/app_routes.dart';
+
 class SyncView extends GetView<SyncController> {
   const SyncView({super.key});
 
@@ -49,20 +51,20 @@ class SyncView extends GetView<SyncController> {
                 ),
               ),
 
-            const SizedBox(height: 20),
-
-            ElevatedButton(
-              onPressed: controller.resyncFailedTables,
-              child: const Text('Resync All Failed'),
-            ),
+            if (!allSynced) ...[
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: controller.resyncFailedTables,
+                child: const Text('Resync All Failed'),
+              ),
+            ],
 
             const SizedBox(height: 20),
 
             if (allSynced)
               ElevatedButton(
                 onPressed: () {
-                  // Manually move forward, no auto redirect
-                  Get.offNamed('/next-screen');
+                  Get.offNamed(AppRoutes.dashboard);
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue,

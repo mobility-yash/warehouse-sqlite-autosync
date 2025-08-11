@@ -2,75 +2,28 @@ import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:warehouse_data_autosync/core/constants/constants.dart';
 
-class DummyDataUploaderView extends StatelessWidget {
-  DummyDataUploaderView({super.key});
+class DummyDataUploaderView extends StatefulWidget {
+  const DummyDataUploaderView({super.key});
 
-  final List<String> locationNames = [
-    'Mumbai',
-    'Pune',
-    'Delhi',
-    'Bengaluru',
-    'Chennai',
-    'Kolkata',
-    'Hyderabad',
-    'Jaipur',
-    'Ahmedabad',
-    'Surat',
-  ];
+  @override
+  State<DummyDataUploaderView> createState() => _DummyDataUploaderViewState();
+}
 
-  final List<String> itemNames = [
-    'Rice',
-    'Wheat',
-    'Sugar',
-    'Salt',
-    'Oil',
-    'Spices',
-    'Tea',
-    'Coffee',
-    'Flour',
-    'Lentils',
-    'Beans',
-    'Milk',
-    'Butter',
-    'Ghee',
-    'Biscuits',
-    'Soap',
-    'Shampoo',
-    'Toothpaste',
-    'Detergent',
-    'Snacks',
-    'Juice',
-    'Water',
-  ];
-
-  final List<String> warehousePrefixes = [
-    'Central Depot',
-    'Main Storage Facility',
-    'Distribution Hub',
-    'Logistics Center',
-    'North Block Storage',
-    'Regional Stockyard',
-    'Goods Handling Unit',
-    'Urban Delivery Base',
-    'Rural Supplies Depot',
-    'Bulk Storage Area',
-  ];
-
-  final List<String> warehouseSuffixes = [
-    'for Dry Goods',
-    'and Packaged Food',
-    'Handling Agricultural Stock',
-    'Near Industrial Area',
-    'Behind Main Market',
-    'Close to Railway Yard',
-    'Next to Wholesale Market',
-    'inside Commercial Complex',
-    'for Essential Commodities',
-    'of FMCG Distribution',
-  ];
+class _DummyDataUploaderViewState extends State<DummyDataUploaderView> {
+  bool _isLoading = false;
+  String _currentStep = '';
+  int _completedSteps = 0;
+  final int _totalSteps = 5;
 
   Future<void> uploadData() async {
+    setState(() {
+      _isLoading = true;
+      _completedSteps = 0;
+      _currentStep = '';
+    });
+
     final firestore = FirebaseFirestore.instance;
     final now = Timestamp.now();
     final random = Random();
@@ -79,102 +32,112 @@ class DummyDataUploaderView extends StatelessWidget {
     Timestamp latestWarehouseUpdate = now;
     Timestamp latestItemUpdate = now;
     Timestamp? latestNotificationUpdate;
-
     bool notificationAdded = false;
 
-    for (String locName in locationNames) {
-      final locationRef = firestore.collection('locations').doc();
+    // Step 1: Locations
+    setState(() => _currentStep = 'Uploading locations...');
+    for (String locName in YArrays.locationDummyNames) {
+      final locationRef = firestore.collection(YStrings.locations).doc();
       await locationRef.set({
-        'id': locationRef.id,
-        'name': locName,
-        'address': '$locName Main Street',
-        'updatedAt': now,
+        YStrings.colId: locationRef.id,
+        YStrings.colName: locName,
+        YStrings.colAddress: '$locName Main Street',
+        YStrings.colUpdatedAt: now,
       });
       latestLocationUpdate = now;
 
-      // Generate 1–3 warehouses
+      // Warehouses for each location
       int warehouseCount = 1 + random.nextInt(3);
       for (int i = 0; i < warehouseCount; i++) {
-        final warehouseRef = firestore.collection('warehouses').doc();
-
+        // Step 2: Warehouses
+        setState(() => _currentStep = 'Uploading warehouses...');
+        final warehouseRef = firestore.collection(YStrings.warehouses).doc();
         final name =
-            '${warehousePrefixes[random.nextInt(warehousePrefixes.length)]} '
-            '${warehouseSuffixes[random.nextInt(warehouseSuffixes.length)]}';
+            '${YArrays.warehouseDummyPrefixes[random.nextInt(YArrays.warehouseDummyPrefixes.length)]} '
+            '${YArrays.warehouseDummySuffixes[random.nextInt(YArrays.warehouseDummySuffixes.length)]}';
 
         await warehouseRef.set({
-          'id': warehouseRef.id,
-          'name': name,
-          'locationId': locationRef.id,
-          'address': '$name, $locName',
-          'updatedAt': now,
+          YStrings.colId: warehouseRef.id,
+          YStrings.colName: name,
+          YStrings.colLocationId: locationRef.id,
+          YStrings.colAddress: '$name, $locName',
+          YStrings.colUpdatedAt: now,
         });
         latestWarehouseUpdate = now;
 
-        // Pick a unique random subset of items for this warehouse
-        List<String> shuffledItems = List.from(itemNames)..shuffle();
-        int itemCount = 1 + random.nextInt(10); // 1 to 10 items
+        // Items
+        List<String> shuffledItems = List.from(YArrays.itemDummyNames)
+          ..shuffle();
+        int itemCount = 1 + random.nextInt(10);
         List<String> warehouseItems = shuffledItems.take(itemCount).toList();
 
         for (String itemName in warehouseItems) {
-          final itemRef = firestore.collection('items').doc();
-          final quantity = 10 + random.nextInt(15); // 10 to 24
+          // Step 3: Items
+          setState(() => _currentStep = 'Uploading items...');
+          final itemRef = firestore.collection(YStrings.items).doc();
+          final quantity = 10 + random.nextInt(15);
 
           await itemRef.set({
-            'id': itemRef.id,
-            'name': itemName,
-            'warehouseId': warehouseRef.id,
-            'locationId': locationRef.id,
-            'quantity': quantity,
-            'updatedAt': now,
+            YStrings.colId: itemRef.id,
+            YStrings.colName: itemName,
+            YStrings.colWarehouseId: warehouseRef.id,
+            YStrings.colLocationId: locationRef.id,
+            YStrings.colQuantity: quantity,
+            YStrings.colUpdatedAt: now,
           });
           latestItemUpdate = now;
 
-          // Add only one notification: for first location, first warehouse, first item
+          // Step 4: Notifications (only one)
           if (!notificationAdded) {
-            final notificationRef = firestore.collection('notifications').doc();
-            final type = 'outgoing';
-            final delta = 10;
-
+            setState(() => _currentStep = 'Uploading notifications...');
+            final notificationRef = firestore
+                .collection(YStrings.notifications)
+                .doc();
             await notificationRef.set({
-              'id': notificationRef.id,
-              'type': type,
-              'itemId': itemRef.id,
-              'count': delta,
-              'warehouseId': warehouseRef.id,
-              'locationId': locationRef.id,
-              'updatedAt': now,
+              YStrings.colId: notificationRef.id,
+              YStrings.colType: YStrings.transactionOutgoing,
+              YStrings.colItemId: itemRef.id,
+              YStrings.colCount: 10,
+              YStrings.colWarehouseId: warehouseRef.id,
+              YStrings.colLocationId: locationRef.id,
+              YStrings.colUpdatedAt: now,
             });
-
             latestNotificationUpdate = now;
             notificationAdded = true;
           }
         }
       }
     }
+    _completedSteps = 4; // 4 data tables done
 
-    final metadataCollection = firestore.collection('sync_metadata');
+    // Step 5: Metadata
+    setState(() => _currentStep = 'Updating sync metadata...');
+    final metadataCollection = firestore.collection(YStrings.syncMetadata);
 
-    await metadataCollection.doc('locations').set({
-      'collection': 'locations',
-      'updatedAt': latestLocationUpdate,
+    await metadataCollection.doc(YStrings.locations).set({
+      YStrings.colEntity: YStrings.locations,
+      YStrings.colLastUpdatedAt: latestLocationUpdate,
     });
-
-    await metadataCollection.doc('warehouses').set({
-      'collection': 'warehouses',
-      'updatedAt': latestWarehouseUpdate,
+    await metadataCollection.doc(YStrings.warehouses).set({
+      YStrings.colEntity: YStrings.warehouses,
+      YStrings.colLastUpdatedAt: latestWarehouseUpdate,
     });
-
-    await metadataCollection.doc('items').set({
-      'collection': 'items',
-      'updatedAt': latestItemUpdate,
+    await metadataCollection.doc(YStrings.items).set({
+      YStrings.colEntity: YStrings.items,
+      YStrings.colLastUpdatedAt: latestItemUpdate,
     });
-
     if (latestNotificationUpdate != null) {
-      await metadataCollection.doc('notifications').set({
-        'collection': 'notifications',
-        'updatedAt': latestNotificationUpdate,
+      await metadataCollection.doc(YStrings.notifications).set({
+        YStrings.colEntity: YStrings.notifications,
+        YStrings.colLastUpdatedAt: latestNotificationUpdate,
       });
     }
+
+    setState(() {
+      _completedSteps = _totalSteps;
+      _isLoading = false;
+      _currentStep = 'All data uploaded!';
+    });
   }
 
   @override
@@ -182,15 +145,27 @@ class DummyDataUploaderView extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Firestore Seeder')),
       body: Center(
-        child: ElevatedButton(
-          onPressed: () async {
-            await uploadData();
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Realistic Data Uploaded!')),
-            );
-          },
-          child: const Text('Generate & Upload Real Data'),
-        ),
+        child: _isLoading
+            ? Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 16),
+                  Text(
+                    _currentStep,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text('$_completedSteps / $_totalSteps steps completed'),
+                ],
+              )
+            : ElevatedButton(
+                onPressed: uploadData,
+                child: const Text('Generate & Upload Real Data'),
+              ),
       ),
     );
   }

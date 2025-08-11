@@ -9,6 +9,7 @@ import 'package:warehouse_data_autosync/core/common/models/location_model.dart';
 import 'package:warehouse_data_autosync/core/common/models/notification_model.dart';
 import 'package:warehouse_data_autosync/core/common/models/sync_metadata_model.dart';
 import 'package:warehouse_data_autosync/core/common/models/warehouse_model.dart';
+import 'package:warehouse_data_autosync/core/constants/constants.dart';
 
 class DatabaseClientImpl extends DatabaseClient {
   static const _dbName = 'app_data.db';
@@ -19,9 +20,6 @@ class DatabaseClientImpl extends DatabaseClient {
 
   DatabaseClientImpl();
 
-  // -------------------------
-  // Database getter + init
-  // -------------------------
   @override
   Future<Database> get database async {
     if (_database != null) {
@@ -29,7 +27,6 @@ class DatabaseClientImpl extends DatabaseClient {
       return _database!;
     }
 
-    // If already opening, wait for the same future instead of starting another open
     if (_openingCompleter != null) {
       debugPrint(
         '[DatabaseClientImpl] Waiting for database to finish opening...',
@@ -50,14 +47,12 @@ class DatabaseClientImpl extends DatabaseClient {
       _openingCompleter!.completeError(e, stack);
       rethrow;
     } finally {
-      // allow future open attempts to create a new completer if needed
       _openingCompleter = null;
     }
   }
 
   Future<Database> _initDatabase() async {
     debugPrint('[DatabaseClientImpl] Initializing database...');
-
     final dbPath = await getDatabasesPath();
     debugPrint('[DatabaseClientImpl] Database path: $dbPath');
 
@@ -80,123 +75,102 @@ class DatabaseClientImpl extends DatabaseClient {
     );
   }
 
-  // -------------------------
-  // onCreate (use provided `db` - do NOT call `database` here)
-  // -------------------------
   Future<void> _onCreate(Database db, int version) async {
     // Locations table
     await db.execute('''
-      CREATE TABLE locations (
-        id TEXT PRIMARY KEY,
-        name TEXT,
-        address TEXT,
-        updatedAt TEXT
+      CREATE TABLE ${YStrings.locations} (
+        ${YStrings.colId} TEXT PRIMARY KEY,
+        ${YStrings.colName} TEXT,
+        ${YStrings.colAddress} TEXT,
+        ${YStrings.colUpdatedAt} TEXT
       );
     ''');
 
     // Warehouses table
     await db.execute('''
-      CREATE TABLE warehouses (
-        id TEXT PRIMARY KEY,
-        name TEXT,
-        locationId TEXT,
-        address TEXT,
-        updatedAt TEXT,
-        FOREIGN KEY (locationId) REFERENCES locations (id)
+      CREATE TABLE ${YStrings.warehouses} (
+        ${YStrings.colId} TEXT PRIMARY KEY,
+        ${YStrings.colName} TEXT,
+        ${YStrings.colLocationId} TEXT,
+        ${YStrings.colAddress} TEXT,
+        ${YStrings.colUpdatedAt} TEXT,
+        FOREIGN KEY (${YStrings.colLocationId}) REFERENCES ${YStrings.locations} (${YStrings.colId})
       );
     ''');
 
     // Items table
     await db.execute('''
-      CREATE TABLE items (
-        id TEXT PRIMARY KEY,
-        name TEXT,
-        warehouseId TEXT,
-        locationId TEXT,
-        quantity INTEGER,
-        updatedAt TEXT,
-        FOREIGN KEY (warehouseId) REFERENCES warehouses (id),
-        FOREIGN KEY (locationId) REFERENCES locations (id)
+      CREATE TABLE ${YStrings.items} (
+        ${YStrings.colId} TEXT PRIMARY KEY,
+        ${YStrings.colName} TEXT,
+        ${YStrings.colWarehouseId} TEXT,
+        ${YStrings.colLocationId} TEXT,
+        ${YStrings.colQuantity} INTEGER,
+        ${YStrings.colUpdatedAt} TEXT,
+        FOREIGN KEY (${YStrings.colWarehouseId}) REFERENCES ${YStrings.warehouses} (${YStrings.colId}),
+        FOREIGN KEY (${YStrings.colLocationId}) REFERENCES ${YStrings.locations} (${YStrings.colId})
       );
     ''');
 
     // Notifications table
     await db.execute('''
-      CREATE TABLE notifications (
-        id TEXT PRIMARY KEY,
-        type TEXT,
-        itemId TEXT,
-        count INTEGER,
-        warehouseId TEXT,
-        locationId TEXT,
-        updatedAt TEXT,
-        synced INTEGER NOT NULL DEFAULT 0,
-        FOREIGN KEY (itemId) REFERENCES items (id),
-        FOREIGN KEY (warehouseId) REFERENCES warehouses (id),
-        FOREIGN KEY (locationId) REFERENCES locations (id)
+      CREATE TABLE ${YStrings.notifications} (
+        ${YStrings.colId} TEXT PRIMARY KEY,
+        ${YStrings.colType} TEXT,
+        ${YStrings.colItemId} TEXT,
+        ${YStrings.colCount} INTEGER,
+        ${YStrings.colWarehouseId} TEXT,
+        ${YStrings.colLocationId} TEXT,
+        ${YStrings.colUpdatedAt} TEXT,
+        ${YStrings.colSynced} INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (${YStrings.colItemId}) REFERENCES ${YStrings.items} (${YStrings.colId}),
+        FOREIGN KEY (${YStrings.colWarehouseId}) REFERENCES ${YStrings.warehouses} (${YStrings.colId}),
+        FOREIGN KEY (${YStrings.colLocationId}) REFERENCES ${YStrings.locations} (${YStrings.colId})
       );
     ''');
 
     // Sync metadata table
     await db.execute('''
-      CREATE TABLE sync_metadata (
-        entity TEXT PRIMARY KEY,
-        lastUpdatedAt TEXT
+      CREATE TABLE ${YStrings.syncMetadata} (
+        ${YStrings.colEntity} TEXT PRIMARY KEY,
+        ${YStrings.colLastUpdatedAt} TEXT
       );
     ''');
 
-    // Insert initial metadata using the `db` instance (avoid calling `database` here)
     await _insertInitialSyncMetadataWithDb(db);
   }
 
-  // -------------------------
-  // Helper to insert initial sync metadata during onCreate (uses provided db)
-  // -------------------------
   Future<void> _insertInitialSyncMetadataWithDb(Database db) async {
     final batch = db.batch();
-
-    batch.insert('sync_metadata', {
-      'entity': 'locations',
-      'lastUpdatedAt': '',
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
-    batch.insert('sync_metadata', {
-      'entity': 'warehouses',
-      'lastUpdatedAt': '',
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
-    batch.insert('sync_metadata', {
-      'entity': 'items',
-      'lastUpdatedAt': '',
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
-    batch.insert('sync_metadata', {
-      'entity': 'notifications',
-      'lastUpdatedAt': '',
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
-
+    for (final table in [
+      YStrings.locations,
+      YStrings.warehouses,
+      YStrings.items,
+      YStrings.notifications,
+    ]) {
+      batch.insert(YStrings.syncMetadata, {
+        YStrings.colEntity: table,
+        YStrings.colLastUpdatedAt: '',
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
     await batch.commit(noResult: true);
-    debugPrint(
-      '[DatabaseClientImpl] Initial sync_metadata inserted (onCreate).',
-    );
+    debugPrint('[DatabaseClientImpl] Initial sync_metadata inserted.');
   }
 
-  // -------------------------
-  // Public insertInitialSyncMetadata (calls the helper using the opened DB)
-  // -------------------------
   @override
   Future<void> insertInitialSyncMetadata() async {
     final db = await database;
     await _insertInitialSyncMetadataWithDb(db);
   }
 
-  // -------------------------
   // Items
-  // -------------------------
   @override
   Future<void> insertItems(List<ItemModel> items) async {
     final db = await database;
     final batch = db.batch();
     for (final item in items) {
       batch.insert(
-        'items',
+        YStrings.items,
         item.toMap(),
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
@@ -209,14 +183,14 @@ class DatabaseClientImpl extends DatabaseClient {
   Future<List<ItemModel>> getItemsByWarehouseId(String warehouseId) async {
     final db = await database;
     final maps = await db.query(
-      'items',
-      where: 'warehouseId = ?',
+      YStrings.items,
+      where: '${YStrings.colWarehouseId} = ?',
       whereArgs: [warehouseId],
     );
     debugPrint(
       '[DatabaseClientImpl] getItemsByWarehouseId: found ${maps.length}',
     );
-    return maps.map((m) => ItemModel.fromDb(m)).toList();
+    return maps.map(ItemModel.fromDb).toList();
   }
 
   @override
@@ -224,7 +198,7 @@ class DatabaseClientImpl extends DatabaseClient {
     try {
       final db = await database;
       final result = await db.rawQuery(
-        'SELECT EXISTS(SELECT 1 FROM items LIMIT 1)',
+        'SELECT EXISTS(SELECT 1 FROM ${YStrings.items} LIMIT 1)',
       );
       return Sqflite.firstIntValue(result) == 1;
     } catch (e, st) {
@@ -237,20 +211,18 @@ class DatabaseClientImpl extends DatabaseClient {
   @override
   Future<void> clearItems() async {
     final db = await database;
-    await db.delete('items');
+    await db.delete(YStrings.items);
     debugPrint('[DatabaseClientImpl] Cleared items table.');
   }
 
-  // -------------------------
   // Locations
-  // -------------------------
   @override
   Future<void> insertLocations(List<LocationModel> locations) async {
     final db = await database;
     final batch = db.batch();
     for (final loc in locations) {
       batch.insert(
-        'locations',
+        YStrings.locations,
         loc.toMap(),
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
@@ -262,9 +234,9 @@ class DatabaseClientImpl extends DatabaseClient {
   @override
   Future<List<LocationModel>> getLocations() async {
     final db = await database;
-    final maps = await db.query('locations');
+    final maps = await db.query(YStrings.locations);
     debugPrint('[DatabaseClientImpl] getLocations: found ${maps.length}');
-    return maps.map((m) => LocationModel.fromDb(m)).toList();
+    return maps.map(LocationModel.fromDb).toList();
   }
 
   @override
@@ -272,7 +244,7 @@ class DatabaseClientImpl extends DatabaseClient {
     try {
       final db = await database;
       final result = await db.rawQuery(
-        'SELECT EXISTS(SELECT 1 FROM locations LIMIT 1)',
+        'SELECT EXISTS(SELECT 1 FROM ${YStrings.locations} LIMIT 1)',
       );
       return Sqflite.firstIntValue(result) == 1;
     } catch (e, st) {
@@ -285,20 +257,18 @@ class DatabaseClientImpl extends DatabaseClient {
   @override
   Future<void> clearLocations() async {
     final db = await database;
-    await db.delete('locations');
+    await db.delete(YStrings.locations);
     debugPrint('[DatabaseClientImpl] Cleared locations table.');
   }
 
-  // -------------------------
   // Warehouses
-  // -------------------------
   @override
   Future<void> insertWarehouses(List<WarehouseModel> warehouses) async {
     final db = await database;
     final batch = db.batch();
     for (final w in warehouses) {
       batch.insert(
-        'warehouses',
+        YStrings.warehouses,
         w.toMap(),
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
@@ -315,14 +285,14 @@ class DatabaseClientImpl extends DatabaseClient {
   ) async {
     final db = await database;
     final maps = await db.query(
-      'warehouses',
-      where: 'locationId = ?',
+      YStrings.warehouses,
+      where: '${YStrings.colLocationId} = ?',
       whereArgs: [locationId],
     );
     debugPrint(
       '[DatabaseClientImpl] getWarehousesByLocationId: found ${maps.length}',
     );
-    return maps.map((m) => WarehouseModel.fromDb(m)).toList();
+    return maps.map(WarehouseModel.fromDb).toList();
   }
 
   @override
@@ -330,7 +300,7 @@ class DatabaseClientImpl extends DatabaseClient {
     try {
       final db = await database;
       final result = await db.rawQuery(
-        'SELECT EXISTS(SELECT 1 FROM warehouses LIMIT 1)',
+        'SELECT EXISTS(SELECT 1 FROM ${YStrings.warehouses} LIMIT 1)',
       );
       return Sqflite.firstIntValue(result) == 1;
     } catch (e, st) {
@@ -343,13 +313,11 @@ class DatabaseClientImpl extends DatabaseClient {
   @override
   Future<void> clearWarehouses() async {
     final db = await database;
-    await db.delete('warehouses');
+    await db.delete(YStrings.warehouses);
     debugPrint('[DatabaseClientImpl] Cleared warehouses table.');
   }
 
-  // -------------------------
   // Notifications
-  // -------------------------
   @override
   Future<void> insertNotifications(
     List<NotificationModel> notifications,
@@ -358,31 +326,28 @@ class DatabaseClientImpl extends DatabaseClient {
     final batch = db.batch();
     for (final n in notifications) {
       final map = n.toMap();
-      map['synced'] = 1;
+      map[YStrings.colSynced] = 1;
       batch.insert(
-        'notifications',
+        YStrings.notifications,
         map,
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     }
     await batch.commit(noResult: true);
-    debugPrint(
-      '[DatabaseClientImpl] Inserted ${notifications.length} notifications (marked as synced).',
-    );
   }
 
   @override
   Future<List<NotificationModel>> getUnsyncedNotifications() async {
     final db = await database;
     final maps = await db.query(
-      'notifications',
-      where: 'synced = ?',
+      YStrings.notifications,
+      where: '${YStrings.colSynced} = ?',
       whereArgs: [0],
     );
     debugPrint(
       '[DatabaseClientImpl] getUnsyncedNotifications: found ${maps.length}',
     );
-    return maps.map((m) => NotificationModel.fromDb(m)).toList();
+    return maps.map(NotificationModel.fromDb).toList();
   }
 
   @override
@@ -392,9 +357,9 @@ class DatabaseClientImpl extends DatabaseClient {
     final batch = db.batch();
     for (final id in ids) {
       batch.update(
-        'notifications',
-        {'synced': 1},
-        where: 'id = ?',
+        YStrings.notifications,
+        {YStrings.colSynced: 1},
+        where: '${YStrings.colId} = ?',
         whereArgs: [id],
       );
     }
@@ -409,7 +374,7 @@ class DatabaseClientImpl extends DatabaseClient {
     try {
       final db = await database;
       final result = await db.rawQuery(
-        'SELECT EXISTS(SELECT 1 FROM notifications LIMIT 1)',
+        'SELECT EXISTS(SELECT 1 FROM ${YStrings.notifications} LIMIT 1)',
       );
       return Sqflite.firstIntValue(result) == 1;
     } catch (e, st) {
@@ -424,13 +389,10 @@ class DatabaseClientImpl extends DatabaseClient {
   @override
   Future<void> clearNotifications() async {
     final db = await database;
-    await db.delete('notifications');
-    debugPrint('[DatabaseClientImpl] Cleared notifications table.');
+    await db.delete(YStrings.notifications);
   }
 
-  // -------------------------
   // Sync metadata
-  // -------------------------
   @override
   Future<void> updateLastUpdatedAt({
     required String entity,
@@ -438,9 +400,9 @@ class DatabaseClientImpl extends DatabaseClient {
   }) async {
     final db = await database;
     await db.update(
-      'sync_metadata',
-      {'lastUpdatedAt': lastUpdatedAt},
-      where: 'entity = ?',
+      YStrings.syncMetadata,
+      {YStrings.colLastUpdatedAt: lastUpdatedAt},
+      where: '${YStrings.colEntity} = ?',
       whereArgs: [entity],
     );
     debugPrint(
@@ -452,8 +414,8 @@ class DatabaseClientImpl extends DatabaseClient {
   Future<SyncMetadataModel?> getSyncMetadata(String entity) async {
     final db = await database;
     final result = await db.query(
-      'sync_metadata',
-      where: 'entity = ?',
+      YStrings.syncMetadata,
+      where: '${YStrings.colEntity} = ?',
       whereArgs: [entity],
     );
     if (result.isNotEmpty) return SyncMetadataModel.fromDb(result.first);
@@ -465,7 +427,7 @@ class DatabaseClientImpl extends DatabaseClient {
     try {
       final db = await database;
       final result = await db.rawQuery(
-        'SELECT EXISTS(SELECT 1 FROM sync_metadata LIMIT 1)',
+        'SELECT EXISTS(SELECT 1 FROM ${YStrings.syncMetadata} LIMIT 1)',
       );
       return Sqflite.firstIntValue(result) == 1;
     } catch (e, st) {
@@ -480,41 +442,44 @@ class DatabaseClientImpl extends DatabaseClient {
   @override
   Future<void> clearSyncMetadata() async {
     final db = await database;
-    await db.delete('sync_metadata');
+    await db.delete(YStrings.syncMetadata);
     debugPrint('[DatabaseClientImpl] Cleared sync_metadata table.');
   }
 
   @override
-  Future<void> updateLocationsSync(String lastUpdatedAt) =>
-      updateLastUpdatedAt(entity: 'locations', lastUpdatedAt: lastUpdatedAt);
+  Future<void> updateLocationsSync(String lastUpdatedAt) => updateLastUpdatedAt(
+    entity: YStrings.locations,
+    lastUpdatedAt: lastUpdatedAt,
+  );
 
   @override
   Future<void> updateWarehousesSync(String lastUpdatedAt) =>
-      updateLastUpdatedAt(entity: 'warehouses', lastUpdatedAt: lastUpdatedAt);
+      updateLastUpdatedAt(
+        entity: YStrings.warehouses,
+        lastUpdatedAt: lastUpdatedAt,
+      );
 
   @override
   Future<void> updateItemsSync(String lastUpdatedAt) =>
-      updateLastUpdatedAt(entity: 'items', lastUpdatedAt: lastUpdatedAt);
+      updateLastUpdatedAt(entity: YStrings.items, lastUpdatedAt: lastUpdatedAt);
 
   @override
   Future<void> updateNotificationsSync(String lastUpdatedAt) =>
       updateLastUpdatedAt(
-        entity: 'notifications',
+        entity: YStrings.notifications,
         lastUpdatedAt: lastUpdatedAt,
       );
 
   @override
   Future<Map<String, DateTime?>> getSyncMetadataMap() async {
     final db = await database;
-    final rows = await db.query('sync_metadata');
-
+    final rows = await db.query(YStrings.syncMetadata);
     final map = <String, DateTime?>{};
     for (final row in rows) {
-      final entity = row['entity'] as String;
-      final tsString = row['lastUpdatedAt'] as String?;
+      final entity = row[YStrings.colEntity] as String;
+      final tsString = row[YStrings.colLastUpdatedAt] as String?;
       map[entity] = tsString != null ? DateTime.tryParse(tsString) : null;
     }
-
     debugPrint('[DatabaseClientImpl] getSyncMetadataMap -> $map');
     return map;
   }
@@ -530,12 +495,31 @@ class DatabaseClientImpl extends DatabaseClient {
       );
       return;
     }
+
     final db = await database;
     final batch = db.batch();
+
     for (final row in data) {
-      batch.insert(table, row, conflictAlgorithm: ConflictAlgorithm.replace);
+      final rowCopy = Map<String, dynamic>.from(row);
+
+      // Special handling for sync_metadata table
+      if (table == YStrings.syncMetadata &&
+          rowCopy.containsKey(YStrings.colUpdatedAt)) {
+        rowCopy.remove(YStrings.colId);
+        rowCopy[YStrings.colLastUpdatedAt] = rowCopy.remove(
+          YStrings.colUpdatedAt,
+        );
+      }
+
+      batch.insert(
+        table,
+        rowCopy,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
     }
+
     await batch.commit(noResult: true);
+
     debugPrint(
       '[DatabaseClientImpl] insertOrUpdateTable: Upserted ${data.length} rows into $table',
     );
@@ -548,12 +532,9 @@ class DatabaseClientImpl extends DatabaseClient {
   ) async {
     final db = await database;
     await db.update(
-      'sync_metadata',
-      {
-        'lastUpdatedAt': lastUpdatedAt
-            ?.toIso8601String(), // store null if no date
-      },
-      where: 'entity = ?',
+      YStrings.syncMetadata,
+      {YStrings.colLastUpdatedAt: lastUpdatedAt?.toIso8601String()},
+      where: '${YStrings.colEntity} = ?',
       whereArgs: [entity],
     );
     debugPrint(

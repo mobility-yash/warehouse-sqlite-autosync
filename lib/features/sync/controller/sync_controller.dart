@@ -62,6 +62,7 @@ class SyncController extends GetxController {
       YStrings.warehouses,
       YStrings.items,
       YStrings.notifications,
+      YStrings.syncMetadata,
     ];
 
     bool allSuccess = true;
@@ -78,7 +79,8 @@ class SyncController extends GetxController {
     isLoading.value = false;
 
     if (allSuccess) {
-      Get.offAllNamed(AppRoutes.dashboard);
+      // Get.offAllNamed(AppRoutes.dashboard);
+      debugPrint('[SyncController] All tables success in first-time syncing.');
     } else {
       debugPrint('[SyncController] Some tables failed during first-time sync.');
     }
@@ -107,11 +109,32 @@ class SyncController extends GetxController {
       final localUpdatedAt = localMetadata[table];
       final remoteUpdatedAt = remoteMetadata[table];
 
-      if (remoteUpdatedAt != null &&
-          (localUpdatedAt == null || remoteUpdatedAt.isAfter(localUpdatedAt))) {
-        debugPrint('[SyncController] $table needs sync');
+      // Convert to DateTime if strings
+      final localTime = localUpdatedAt;
+      final remoteTime = remoteUpdatedAt;
+
+      bool needsRemoteToLocal = false;
+      bool needsLocalToRemote = false;
+
+      if (remoteTime != null &&
+          (localTime == null || remoteTime.isAfter(localTime))) {
+        needsRemoteToLocal = true;
+      }
+
+      if (localTime != null &&
+          (remoteTime == null || localTime.isAfter(remoteTime))) {
+        needsLocalToRemote = true;
+      }
+
+      if (needsRemoteToLocal || needsLocalToRemote) {
         anyNeedsSync = true;
         tableSynced[table] = false;
+
+        debugPrint(
+          '[SyncController] Table $table needs sync '
+          '${needsRemoteToLocal ? "(remote → local) " : ""}'
+          '${needsLocalToRemote ? "(local → remote)" : ""}',
+        );
       }
     }
 

@@ -9,6 +9,11 @@ import 'app_routes.dart';
 
 class AppPages {
   static final routes = <GetPage>[
+    // GetPage(
+    //   name: AppRoutes.dummyDataUploader,
+    //   page: () => DummyDataUploaderView(),
+    //   binding: DashboardBinding(),
+    // ),
     GetPage(
       name: AppRoutes.splash,
       page: () => SplashView(),
@@ -24,11 +29,7 @@ class AppPages {
       page: () => DashboardView(),
       binding: DashboardBinding(),
     ),
-    // GetPage(
-    //   name: AppRoutes.dummyDataUploader,
-    //   page: () => DummyDataUploaderView(),
-    //   binding: DashboardBinding(),
-    // ),
+
     GetPage(
       name: AppRoutes.notificationList,
       page: () => NotificationListView(),
