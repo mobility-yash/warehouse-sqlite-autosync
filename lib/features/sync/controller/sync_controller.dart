@@ -151,9 +151,9 @@ class SyncController extends GetxController {
     try {
       final data = await firebaseClient.fetchTableData(table);
 
-      if (table == YStrings.notifications) {
+      if (table == YStrings.notifications || table == YStrings.items) {
         final processedData = data.map((row) {
-          row['synced'] = 1;
+          row[YStrings.colSynced] = 1;
           return row;
         }).toList();
         await dbClient.insertOrUpdateTable(table, processedData);

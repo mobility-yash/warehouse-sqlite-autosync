@@ -1,16 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'package:warehouse_data_autosync/core/clients/database/database_client.dart';
+import 'package:warehouse_data_autosync/core/clients/firebase/firebase_client.dart';
+import 'package:warehouse_data_autosync/core/clients/internet/connectivity_client.dart';
 import 'package:warehouse_data_autosync/core/common/models/item_model.dart';
 import 'package:warehouse_data_autosync/core/common/models/notification_model.dart';
 import 'package:warehouse_data_autosync/core/constants/constants.dart';
 
 class DashboardController extends GetxController {
   final DatabaseClient dbClient;
+  final FirebaseClient firebaseClient;
+  final ConnectivityClient connectivityClient;
+  final SharedPreferences prefs;
 
-  // Pass dbClient from outside
-  DashboardController({required this.dbClient});
+  DashboardController({
+    required this.dbClient,
+    required this.firebaseClient,
+    required this.connectivityClient,
+    required this.prefs,
+  });
 
   // Reactive state variables for selections
   var selectedLocationId = RxnString();
@@ -101,7 +111,6 @@ class DashboardController extends GetxController {
   Future<void> submitNotification() async {
     debugPrint("[submitNotification] Starting submission...");
 
-    // Check if all fields are selected
     if (selectedItemId.value == null ||
         selectedWarehouseId.value == null ||
         selectedLocationId.value == null) {
@@ -126,7 +135,6 @@ class DashboardController extends GetxController {
       int currentQty = item.quantity;
       int newQty = currentQty;
 
-      // Adjust stock based on type
       if (isOutgoing) {
         if (count.value > currentQty) {
           throw Exception(YStrings.errNotEnoughStock);
@@ -138,29 +146,77 @@ class DashboardController extends GetxController {
 
       debugPrint("[submitNotification] New quantity: $newQty");
 
-      // Update item in DB
-      await dbClient.insertItems([
-        item.copyWith(
-          quantity: newQty,
-          updatedAt: DateTime.now().toIso8601String(),
-        ),
-      ]);
-      debugPrint("[submitNotification] Item quantity updated");
+      final now = DateTime.now();
+      final updatedAt = now.toIso8601String();
 
-      // Insert notification in DB
-      await dbClient.insertNotifications([
-        NotificationModel(
-          id: const Uuid().v4(),
-          type: notificationType.value,
-          itemId: selectedItemId.value!,
-          count: count.value,
-          warehouseId: selectedWarehouseId.value!,
-          locationId: selectedLocationId.value!,
-          updatedAt: DateTime.now().toIso8601String(),
-          synced: false,
-        ),
+      final updatedItem = item.copyWith(
+        quantity: newQty,
+        updatedAt: updatedAt,
+        synced: false,
+      );
+
+      final newNotification = NotificationModel(
+        id: const Uuid().v4(),
+        type: notificationType.value,
+        itemId: selectedItemId.value!,
+        count: count.value,
+        warehouseId: selectedWarehouseId.value!,
+        locationId: selectedLocationId.value!,
+        updatedAt: updatedAt,
+        synced: false,
+      );
+
+      final hasNetwork = await connectivityClient.getSmartStatus();
+
+      if (hasNetwork) {
+        try {
+          // Sync with Firebase
+          await firebaseClient.submitNotification(
+            type: notificationType.value,
+            itemId: selectedItemId.value!,
+            count: count.value,
+            warehouseId: selectedWarehouseId.value!,
+            locationId: selectedLocationId.value!,
+          );
+
+          // Save locally as synced
+          await dbClient.insertItems([updatedItem.copyWith(synced: true)]);
+          await dbClient.insertNotifications([
+            newNotification.copyWith(synced: true),
+          ]);
+
+          debugPrint(
+            "[submitNotification] Data synced with Firebase and saved locally.",
+          );
+        } catch (e) {
+          debugPrint("[submitNotification] Firebase sync failed: $e");
+
+          // Save locally as unsynced
+          await dbClient.insertItems([updatedItem]);
+          await dbClient.insertNotifications([newNotification]);
+
+          Get.snackbar(
+            'Warning',
+            'Saved locally but failed to sync with server.',
+          );
+        }
+      } else {
+        // No network - save locally as unsynced
+        await dbClient.insertItems([updatedItem]);
+        await dbClient.insertNotifications([newNotification]);
+        debugPrint(
+          "[submitNotification] No network - saved locally with synced=false.",
+        );
+      }
+
+      // Update local sync_metadata for both tables regardless of network status or sync success
+      await Future.wait([
+        dbClient.updateSyncMetadata(YStrings.items, now),
+        dbClient.updateSyncMetadata(YStrings.notifications, now),
       ]);
-      debugPrint("[submitNotification] Notification inserted");
+      debugPrint(
+        "[submitNotification] Updated sync_metadata timestamps for items and notifications.",
+      );
 
       await refreshSelectedItem(selectedItemId.value!);
       count.value = 1;

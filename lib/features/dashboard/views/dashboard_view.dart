@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:warehouse_data_autosync/core/constants/constants.dart';
 import 'package:warehouse_data_autosync/core/routes/app_routes.dart';
-import 'package:warehouse_data_autosync/features/notification_list/controller/dashboard_controller.dart';
-import 'package:warehouse_data_autosync/features/notification_list/views/widget/custom_dropdown_field.dart';
+
+import '../controller/dashboard_controller.dart';
+import 'widget/custom_dropdown_field.dart';
 
 class DashboardView extends StatelessWidget {
   DashboardView({super.key});

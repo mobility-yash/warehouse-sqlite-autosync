@@ -1,3 +1,5 @@
+import '../../constants/constants.dart';
+
 class SyncMetadataModel {
   final String entity;
   final String lastUpdatedAt;
@@ -6,19 +8,33 @@ class SyncMetadataModel {
 
   factory SyncMetadataModel.fromDb(Map<String, dynamic> map) {
     return SyncMetadataModel(
-      entity: map['entity'],
-      lastUpdatedAt: map['lastUpdatedAt'],
+      entity: map[YStrings.colEntity],
+      lastUpdatedAt: map[YStrings.colLastUpdatedAt],
     );
   }
 
   factory SyncMetadataModel.fromJson(Map<String, dynamic> json) {
     return SyncMetadataModel(
-      entity: json['entity'] as String,
-      lastUpdatedAt: json['lastUpdatedAt'] as String,
+      entity: json[YStrings.colEntity] as String,
+      lastUpdatedAt: json[YStrings.colLastUpdatedAt] as String,
     );
   }
 
   Map<String, dynamic> toMap() {
-    return {'entity': entity, 'lastUpdatedAt': lastUpdatedAt};
+    return {
+      YStrings.colEntity: entity,
+      YStrings.colLastUpdatedAt: lastUpdatedAt,
+    };
+  }
+
+  factory SyncMetadataModel.empty() {
+    return SyncMetadataModel(entity: '', lastUpdatedAt: '');
+  }
+
+  SyncMetadataModel copyWith({String? entity, String? lastUpdatedAt}) {
+    return SyncMetadataModel(
+      entity: entity ?? this.entity,
+      lastUpdatedAt: lastUpdatedAt ?? this.lastUpdatedAt,
+    );
   }
 }

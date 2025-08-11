@@ -1,3 +1,5 @@
+import '../../constants/constants.dart';
+
 class NotificationModel {
   final String id;
   final String type;
@@ -21,40 +23,75 @@ class NotificationModel {
 
   factory NotificationModel.fromJson(Map<String, dynamic> json) {
     return NotificationModel(
-      id: json['id'] as String,
-      type: json['type'] as String,
-      itemId: json['itemId'] as String,
-      count: json['count'] as int,
-      warehouseId: json['warehouseId'] as String,
-      locationId: json['locationId'] as String,
-      updatedAt: json['updatedAt'] as String,
-      synced: json['synced'] == 1,
+      id: json[YStrings.colId] as String,
+      type: json[YStrings.colType] as String,
+      itemId: json[YStrings.colItemId] as String,
+      count: json[YStrings.colCount] as int,
+      warehouseId: json[YStrings.colWarehouseId] as String,
+      locationId: json[YStrings.colLocationId] as String,
+      updatedAt: json[YStrings.colUpdatedAt] as String,
+      synced: json[YStrings.colSynced] == 1,
     );
   }
 
   factory NotificationModel.fromDb(Map<String, dynamic> map) {
     return NotificationModel(
-      id: map['id'],
-      type: map['type'],
-      itemId: map['itemId'],
-      count: map['count'],
-      warehouseId: map['warehouseId'],
-      locationId: map['locationId'],
-      updatedAt: map['updatedAt'],
-      synced: map['synced'] == 1,
+      id: map[YStrings.colId],
+      type: map[YStrings.colType],
+      itemId: map[YStrings.colItemId],
+      count: map[YStrings.colCount],
+      warehouseId: map[YStrings.colWarehouseId],
+      locationId: map[YStrings.colLocationId],
+      updatedAt: map[YStrings.colUpdatedAt],
+      synced: map[YStrings.colSynced] == 1,
     );
   }
 
   Map<String, dynamic> toMap() {
     return {
-      'id': id,
-      'type': type,
-      'itemId': itemId,
-      'count': count,
-      'warehouseId': warehouseId,
-      'locationId': locationId,
-      'updatedAt': updatedAt,
-      'synced': synced ? 1 : 0,
+      YStrings.colId: id,
+      YStrings.colType: type,
+      YStrings.colItemId: itemId,
+      YStrings.colCount: count,
+      YStrings.colWarehouseId: warehouseId,
+      YStrings.colLocationId: locationId,
+      YStrings.colUpdatedAt: updatedAt,
+      YStrings.colSynced: synced ? 1 : 0,
     };
+  }
+
+  factory NotificationModel.empty() {
+    return NotificationModel(
+      id: '',
+      type: '',
+      itemId: '',
+      count: 0,
+      warehouseId: '',
+      locationId: '',
+      updatedAt: '',
+      synced: false,
+    );
+  }
+
+  NotificationModel copyWith({
+    String? id,
+    String? type,
+    String? itemId,
+    int? count,
+    String? warehouseId,
+    String? locationId,
+    String? updatedAt,
+    bool? synced,
+  }) {
+    return NotificationModel(
+      id: id ?? this.id,
+      type: type ?? this.type,
+      itemId: itemId ?? this.itemId,
+      count: count ?? this.count,
+      warehouseId: warehouseId ?? this.warehouseId,
+      locationId: locationId ?? this.locationId,
+      updatedAt: updatedAt ?? this.updatedAt,
+      synced: synced ?? this.synced,
+    );
   }
 }
