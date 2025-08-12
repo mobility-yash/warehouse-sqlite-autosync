@@ -15,23 +15,55 @@ class SyncView extends GetView<SyncController> {
         final allSynced = allTables.every(
           (table) => controller.tableSynced[table] == true,
         );
+        final isAnyTableSyncing =
+            controller.isLoading.value ||
+            controller.tableSyncing.containsValue(true);
 
         return ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            if (isAnyTableSyncing)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Text(
+                  '⚠ Please do not close, minimise, or switch apps while syncing is in progress.',
+                  style: TextStyle(
+                    color: Colors.orange.shade800,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+
             for (final table in allTables)
               Card(
                 child: ListTile(
                   title: Text(table),
-                  subtitle: Text(
-                    controller.tableSynced[table] == true
-                        ? 'Synced'
-                        : 'Not Synced',
-                    style: TextStyle(
-                      color: controller.tableSynced[table] == true
-                          ? Colors.green
-                          : Colors.red,
-                    ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        controller.tableSynced[table] == true
+                            ? 'Synced'
+                            : 'Not Synced',
+                        style: TextStyle(
+                          color: controller.tableSynced[table] == true
+                              ? Colors.green
+                              : Colors.red,
+                        ),
+                      ),
+                      if (controller.tableSynced[table] == false &&
+                          (controller.tableErrors[table]?.isNotEmpty ?? false))
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4.0),
+                          child: Text(
+                            controller.tableErrors[table]!,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.redAccent,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                   trailing: _buildTrailingIcon(controller, table),
                 ),
@@ -39,8 +71,7 @@ class SyncView extends GetView<SyncController> {
 
             const SizedBox(height: 20),
 
-            // Only show this when NOT loading and at least one failed
-            if (!controller.isLoading.value &&
+            if (!isAnyTableSyncing &&
                 controller.tableSynced.values.contains(false))
               ElevatedButton(
                 onPressed: controller.resyncFailedTables,
@@ -49,7 +80,7 @@ class SyncView extends GetView<SyncController> {
 
             const SizedBox(height: 20),
 
-            if (allSynced && !controller.isLoading.value)
+            if (allSynced && !isAnyTableSyncing)
               ElevatedButton(
                 onPressed: controller.continueToDashboard,
                 style: ElevatedButton.styleFrom(
@@ -66,19 +97,15 @@ class SyncView extends GetView<SyncController> {
 
   Widget _buildTrailingIcon(SyncController c, String table) {
     if (c.tableSyncing[table] == true) {
-      // Currently syncing
       return const SizedBox(
         width: 24,
         height: 24,
         child: CircularProgressIndicator(strokeWidth: 2),
       );
     }
-
     if (c.tableSynced[table] == true) {
-      // Success
       return const Icon(Icons.check, color: Colors.green);
     } else {
-      // Failed
       return const Icon(Icons.close, color: Colors.red);
     }
   }

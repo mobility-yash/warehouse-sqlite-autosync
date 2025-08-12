@@ -13,7 +13,21 @@ class NotificationListView extends StatelessWidget {
     debugPrint("[NotificationListView] Building UI");
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Notifications')),
+      appBar: AppBar(
+        title: const Text('Notifications'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.sync),
+            tooltip: 'Sync Unsynced Data',
+            onPressed: controller.isSyncing.value
+                ? null // Disable button while syncing
+                : () async {
+                    debugPrint('[NotificationListView] Sync button pressed');
+                    await controller.syncUnsyncedData();
+                  },
+          ),
+        ],
+      ),
       body: Obx(() {
         debugPrint(
           "[NotificationListView] Notifications count: ${controller.notifications.length}",

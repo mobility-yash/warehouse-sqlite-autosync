@@ -2,16 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:uuid/uuid.dart';
 import 'package:warehouse_data_autosync/core/clients/database/database_client.dart';
+import 'package:warehouse_data_autosync/core/clients/firebase/firebase_client.dart';
 import 'package:warehouse_data_autosync/core/common/models/item_model.dart';
 import 'package:warehouse_data_autosync/core/common/models/notification_model.dart';
 import 'package:warehouse_data_autosync/core/constants/constants.dart';
 
 class NotificationListController extends GetxController {
   final DatabaseClient dbClient;
+  final FirebaseClient firebaseClient;
 
-  NotificationListController({required this.dbClient});
+  NotificationListController({
+    required this.dbClient,
+    required this.firebaseClient,
+  });
 
-  // Form and selection state
   var selectedLocationId = RxnString();
   var selectedWarehouseId = RxnString();
   var selectedItemId = RxnString();
@@ -19,17 +23,15 @@ class NotificationListController extends GetxController {
   var notificationType = YStrings.transactionIncoming.obs;
   var count = 1.obs;
 
-  // Dropdown list data
   var locations = <Map<String, dynamic>>[].obs;
   var warehouses = <Map<String, dynamic>>[].obs;
   var items = <Map<String, dynamic>>[].obs;
 
-  // Notifications list
   var notifications = <NotificationModel>[].obs;
 
-  // Loading indicators
   var isSubmitting = false.obs;
   var isLoadingItems = false.obs;
+  var isSyncing = false.obs;
 
   bool get isOutgoing => notificationType.value == YStrings.transactionOutgoing;
 
@@ -48,17 +50,15 @@ class NotificationListController extends GetxController {
       "[fetchNotifications] Found ${notifModels.length} notifications in DB",
     );
 
-    // Sort unsynced first, then by most recent
     notifModels.sort((a, b) {
       if (a.synced != b.synced) {
         return a.synced ? 1 : -1;
       }
       return DateTime.parse(b.updatedAt).compareTo(DateTime.parse(a.updatedAt));
     });
-
     notifications.value = notifModels;
     debugPrint(
-      "[fetchNotifications] Updated observable list with ${notifications.length} notifications",
+      "[fetchNotifications] Updated list with ${notifications.length} notifications",
     );
   }
 
@@ -72,7 +72,7 @@ class NotificationListController extends GetxController {
         .map((loc) => {YStrings.colId: loc.id, YStrings.colName: loc.name})
         .toList();
 
-    debugPrint("[fetchLocations] Locations loaded into observable list");
+    debugPrint("[fetchLocations] Locations loaded");
   }
 
   Future<void> fetchWarehouses(String locationId) async {
@@ -89,12 +89,10 @@ class NotificationListController extends GetxController {
         .map((w) => {YStrings.colId: w.id, YStrings.colName: w.name})
         .toList();
 
-    // Reset selections
     selectedWarehouseId.value = null;
     items.clear();
     selectedItemId.value = null;
     selectedItem.value = null;
-
     debugPrint("[fetchWarehouses] Warehouses list updated");
   }
 
@@ -116,7 +114,7 @@ class NotificationListController extends GetxController {
         .toList();
 
     isLoadingItems.value = false;
-    debugPrint("[fetchItems] Items loaded into observable list");
+    debugPrint("[fetchItems] Items loaded");
   }
 
   Future<void> submitNotification() async {
@@ -132,18 +130,16 @@ class NotificationListController extends GetxController {
 
     isSubmitting.value = true;
     try {
-      debugPrint("[submitNotification] Retrieving current item data...");
       final allItems = await dbClient.getItemsByWarehouseId(
         selectedWarehouseId.value!,
       );
       final item = allItems.firstWhere((i) => i.id == selectedItemId.value);
 
-      int currentQty = item.quantity;
-      debugPrint("[submitNotification] Current qty: $currentQty");
-      int newQty = currentQty;
+      debugPrint("[submitNotification] Current qty: ${item.quantity}");
+      int newQty = item.quantity;
 
       if (isOutgoing) {
-        if (count.value > currentQty) {
+        if (count.value > item.quantity) {
           debugPrint("[submitNotification] Not enough stock!");
           throw Exception(YStrings.errNotEnoughStock);
         }
@@ -153,16 +149,15 @@ class NotificationListController extends GetxController {
       }
       debugPrint("[submitNotification] New qty after transaction: $newQty");
 
-      // Update item
       await dbClient.insertItems([
         item.copyWith(
           quantity: newQty,
           updatedAt: DateTime.now().toIso8601String(),
+          synced: false,
         ),
       ]);
-      debugPrint("[submitNotification] Item updated in DB");
+      debugPrint("[submitNotification] Item updated locally (synced=false)");
 
-      // Insert notification
       await dbClient.insertNotifications([
         NotificationModel(
           id: const Uuid().v4(),
@@ -176,12 +171,13 @@ class NotificationListController extends GetxController {
         ),
       ]);
       debugPrint(
-        "[submitNotification] Notification inserted into DB (synced=0)",
+        "[submitNotification] Notification inserted locally (synced=false)",
       );
 
       await refreshSelectedItem(selectedItemId.value!);
       count.value = 1;
-      Get.snackbar('Success', 'Notification submitted.');
+
+      Get.snackbar('Success', 'Notification saved locally.');
       await fetchNotifications();
     } catch (e) {
       debugPrint("[submitNotification] Error: $e");
@@ -207,5 +203,66 @@ class NotificationListController extends GetxController {
       YStrings.colQuantity: updatedItem.quantity,
     };
     debugPrint("[refreshSelectedItem] Updated item in selection");
+  }
+
+  /// Push all unsynced items and notifications to Firestore and mark locally as synced.
+  Future<void> syncUnsyncedData() async {
+    debugPrint("[syncUnsyncedData] Started");
+    isSyncing.value = true;
+    try {
+      // Sync unsynced items
+      final unsyncedItems = await dbClient.getUnsyncedItems();
+      debugPrint("[syncUnsyncedData] Unsynced items: ${unsyncedItems.length}");
+      for (final item in unsyncedItems) {
+        try {
+          debugPrint(
+            "[syncUnsyncedData] Syncing item id: ${item.id} to Firebase...",
+          );
+          await firebaseClient.saveItem(item);
+          await dbClient.markItemsAsSynced([item.id]);
+          debugPrint("[syncUnsyncedData] Synced item id: ${item.id}");
+        } catch (e) {
+          debugPrint("[syncUnsyncedData] Item ${item.id} failed to sync: $e");
+        }
+      }
+
+      // Sync unsynced notifications
+      final unsyncedNotifs = await dbClient.getUnsyncedNotifications();
+      debugPrint(
+        "[syncUnsyncedData] Unsynced notifications: ${unsyncedNotifs.length}",
+      );
+      for (final notif in unsyncedNotifs) {
+        try {
+          debugPrint(
+            "[syncUnsyncedData] Syncing notification id: ${notif.id} to Firebase...",
+          );
+          await firebaseClient.saveNotification(notif);
+          await dbClient.markNotificationsAsSynced([notif.id]);
+          debugPrint("[syncUnsyncedData] Synced notification id: ${notif.id}");
+        } catch (e) {
+          debugPrint(
+            "[syncUnsyncedData] Notification ${notif.id} failed to sync: $e",
+          );
+        }
+      }
+
+      final now = DateTime.now();
+      // Update metadata on both Firestore and locally
+      try {
+        await firebaseClient.updateSyncMetadata(YStrings.items, now);
+        await firebaseClient.updateSyncMetadata(YStrings.notifications, now);
+      } catch (e) {
+        debugPrint("[syncUnsyncedData] Could not update remote sync meta $e");
+        // Optionally continue
+      }
+      await dbClient.updateSyncMetadata(YStrings.items, now);
+      await dbClient.updateSyncMetadata(YStrings.notifications, now);
+
+      debugPrint("[syncUnsyncedData] Sync metadata updated for both tables");
+      await fetchNotifications();
+    } finally {
+      isSyncing.value = false;
+      debugPrint("[syncUnsyncedData] Complete");
+    }
   }
 }
