@@ -107,6 +107,7 @@ class DatabaseClientImpl extends DatabaseClient {
         ${YStrings.colLocationId} TEXT,
         ${YStrings.colQuantity} INTEGER,
         ${YStrings.colUpdatedAt} TEXT,
+        ${YStrings.colSynced} INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (${YStrings.colWarehouseId}) REFERENCES ${YStrings.warehouses} (${YStrings.colId}),
         FOREIGN KEY (${YStrings.colLocationId}) REFERENCES ${YStrings.locations} (${YStrings.colId})
       );
@@ -169,14 +170,47 @@ class DatabaseClientImpl extends DatabaseClient {
     final db = await database;
     final batch = db.batch();
     for (final item in items) {
+      final map = item.toMap();
+      if (!map.containsKey(YStrings.colSynced)) {
+        map[YStrings.colSynced] = 0;
+      }
       batch.insert(
         YStrings.items,
-        item.toMap(),
+        map,
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     }
     await batch.commit(noResult: true);
     debugPrint('[DatabaseClientImpl] Inserted ${items.length} items.');
+  }
+
+  @override
+  Future<List<ItemModel>> getUnsyncedItems() async {
+    final db = await database;
+    final maps = await db.query(
+      YStrings.items,
+      where: '${YStrings.colSynced} = ?',
+      whereArgs: [0],
+    );
+    debugPrint('[DatabaseClientImpl] getUnsyncedItems: found ${maps.length}');
+    return maps.map(ItemModel.fromDb).toList();
+  }
+
+  @override
+  Future<void> markItemsAsSynced(List<String> ids) async {
+    if (ids.isEmpty) return;
+    final db = await database;
+    final batch = db.batch();
+    for (final id in ids) {
+      batch.update(
+        YStrings.items,
+        {YStrings.colSynced: 1},
+        where: '${YStrings.colId} = ?',
+        whereArgs: [id],
+      );
+    }
+    await batch.commit(noResult: true);
+    debugPrint('[DatabaseClientImpl] Marked ${ids.length} items as synced.');
   }
 
   @override
@@ -319,6 +353,17 @@ class DatabaseClientImpl extends DatabaseClient {
 
   // Notifications
   @override
+  Future<List<NotificationModel>> getNotifications() async {
+    final db = await database;
+    final maps = await db.query(
+      YStrings.notifications,
+      orderBy: '${YStrings.colUpdatedAt} DESC',
+    );
+    debugPrint('[DatabaseClientImpl] getNotifications: found ${maps.length}');
+    return maps.map(NotificationModel.fromDb).toList();
+  }
+
+  @override
   Future<void> insertNotifications(
     List<NotificationModel> notifications,
   ) async {
@@ -326,7 +371,9 @@ class DatabaseClientImpl extends DatabaseClient {
     final batch = db.batch();
     for (final n in notifications) {
       final map = n.toMap();
-      map[YStrings.colSynced] = 1;
+      if (!map.containsKey(YStrings.colSynced)) {
+        map[YStrings.colSynced] = 0;
+      }
       batch.insert(
         YStrings.notifications,
         map,

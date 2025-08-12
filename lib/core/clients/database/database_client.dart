@@ -10,6 +10,8 @@ abstract class DatabaseClient {
 
   // Items
   Future<void> insertItems(List<ItemModel> items);
+  Future<List<ItemModel>> getUnsyncedItems();
+  Future<void> markItemsAsSynced(List<String> ids);
   Future<List<ItemModel>> getItemsByWarehouseId(String warehouseId);
   Future<bool> isItemsTableNotEmpty();
   Future<void> clearItems();
@@ -27,6 +29,7 @@ abstract class DatabaseClient {
   Future<void> clearWarehouses();
 
   // Notifications
+  Future<List<NotificationModel>> getNotifications();
   Future<void> insertNotifications(List<NotificationModel> notifications);
   Future<List<NotificationModel>> getUnsyncedNotifications();
   Future<void> markNotificationsAsSynced(List<String> ids);

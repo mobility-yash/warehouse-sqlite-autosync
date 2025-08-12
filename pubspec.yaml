@@ -46,6 +46,7 @@ dependencies:
   dio_speed_tracker: ^0.0.4
   lucide_icons_flutter: ^3.0.8
   shared_preferences: ^2.5.3
+  fluttertoast: ^8.2.12
 
 dev_dependencies:
   flutter_test:

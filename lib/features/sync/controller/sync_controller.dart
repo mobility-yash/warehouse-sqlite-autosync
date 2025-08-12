@@ -2,100 +2,109 @@ import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:warehouse_data_autosync/core/clients/database/database_client.dart';
+import 'package:warehouse_data_autosync/core/clients/firebase/firebase_client.dart';
+import 'package:warehouse_data_autosync/core/clients/internet/connectivity_client.dart';
 import 'package:warehouse_data_autosync/core/constants/constants.dart';
 import 'package:warehouse_data_autosync/core/routes/app_routes.dart';
-
-import '../../../core/clients/firebase/firebase_client.dart';
 
 class SyncController extends GetxController {
   final DatabaseClient dbClient;
   final FirebaseClient firebaseClient;
   final SharedPreferences prefs;
+  final ConnectivityClient connectivityClient;
 
   SyncController({
     required this.dbClient,
     required this.firebaseClient,
     required this.prefs,
+    required this.connectivityClient,
   });
 
-  /// Tracks per-table syncing states
   final tableSyncing = <String, bool>{}.obs;
   final tableSynced = <String, bool>{}.obs;
-
-  /// UI loading state
+  final tableErrors = <String, String?>{}.obs;
   final isLoading = false.obs;
-
-  /// Whether this is the first launch
   late bool isFirstLaunch;
 
   @override
   void onInit() {
+    debugPrint('[SyncController] onInit() called');
     super.onInit();
     _setupInitialState();
   }
 
   Future<void> _setupInitialState() async {
-    final localMetadata = await dbClient.getSyncMetadataMap();
-    final isMetadataEmpty = localMetadata.isEmpty;
+    debugPrint('[SyncController] Initializing state...');
 
-    if (isMetadataEmpty) {
-      debugPrint('[SyncController] First launch detected — metadata empty');
-      for (final table in YArrays.allTables) {
-        tableSyncing[table] = false;
-        tableSynced[table] =
-            prefs.getBool('${YStrings.syncStatusPrefix}$table') ?? false;
-      }
+    final localMetadata = await dbClient.getSyncMetadataMap();
+    final allValuesNull = localMetadata.values.every((value) => value == null);
+
+    isFirstLaunch = localMetadata.isEmpty || allValuesNull;
+
+    debugPrint(
+      '[SyncController] isFirstLaunch = $isFirstLaunch (empty=${localMetadata.isEmpty}, allNull=$allValuesNull)',
+    );
+
+    for (final table in YArrays.allTables) {
+      tableSyncing[table] = false;
+      tableSynced[table] =
+          prefs.getBool('${YStrings.syncStatusPrefix}$table') ?? false;
+      tableErrors[table] = null;
+    }
+
+    if (isFirstLaunch) {
+      debugPrint('[SyncController] First launch detected → first-time sync');
       await _performFirstTimeSync();
     } else {
-      debugPrint('[SyncController] Subsequent launch — checking metadata');
+      debugPrint('[SyncController] Subsequent launch → checking metadata');
       await _checkSyncMetadataAndDecide();
     }
   }
 
-  /// First-time sync in defined order
   Future<void> _performFirstTimeSync() async {
+    debugPrint('[SyncController] Performing first-time sync...');
+    final hasNet = await connectivityClient.getSmartStatus();
+    debugPrint('[SyncController] Network check (first-time sync): $hasNet');
+
+    if (!hasNet) {
+      debugPrint('[SyncController] No internet → all tables fail ❌');
+      for (final table in YArrays.allTables) {
+        tableSynced[table] = false;
+        tableErrors[table] = 'No internet connection';
+      }
+      return;
+    }
+
     isLoading.value = true;
-    debugPrint('[SyncController] Performing first-time sync sequence...');
-
-    final syncOrder = [
-      YStrings.locations,
-      YStrings.warehouses,
-      YStrings.items,
-      YStrings.notifications,
-      YStrings.syncMetadata,
-    ];
-
     bool allSuccess = true;
 
-    for (final table in syncOrder) {
+    for (final table in YArrays.allTables) {
       final success = await _syncTable(table, isFirstTime: true);
-      if (!success) {
-        allSuccess = false;
-        await dbClient.updateSyncMetadata(table, null);
-      }
+      if (!success) allSuccess = false;
     }
 
     await prefs.setBool(YStrings.lastInitSyncSuccess, allSuccess);
     isLoading.value = false;
-
-    if (allSuccess) {
-      // Get.offAllNamed(AppRoutes.dashboard);
-      debugPrint('[SyncController] All tables success in first-time syncing.');
-    } else {
-      debugPrint('[SyncController] Some tables failed during first-time sync.');
-    }
   }
 
-  /// Second time and later: use sync_metadata table for comparison
   Future<void> _checkSyncMetadataAndDecide() async {
-    isLoading.value = true;
+    debugPrint('[SyncController] Checking metadata for changes...');
+    final hasNet = await connectivityClient.getSmartStatus();
+    debugPrint('[SyncController] Network check (metadata compare): $hasNet');
 
+    if (!hasNet) {
+      debugPrint(
+        '[SyncController] No network — leaving previous states and errors',
+      );
+      return;
+    }
+
+    isLoading.value = true;
     final lastSyncSuccess =
         prefs.getBool(YStrings.lastInitSyncSuccess) ?? false;
-
     if (!lastSyncSuccess) {
       debugPrint(
-        '[SyncController] Last initial sync failed — redoing first-time sync',
+        '[SyncController] Last initial sync failed → running first-time sync again',
       );
       await _performFirstTimeSync();
       return;
@@ -104,94 +113,118 @@ class SyncController extends GetxController {
     final localMetadata = await dbClient.getSyncMetadataMap();
     final remoteMetadata = await firebaseClient.fetchSyncMetadata();
 
-    bool anyNeedsSync = false;
     for (final table in YArrays.allTables) {
-      final localUpdatedAt = localMetadata[table];
-      final remoteUpdatedAt = remoteMetadata[table];
+      final localTime = localMetadata[table];
+      final remoteTime = remoteMetadata[table];
 
-      // Convert to DateTime if strings
-      final localTime = localUpdatedAt;
-      final remoteTime = remoteUpdatedAt;
+      final needsSync =
+          (remoteTime != null &&
+              (localTime == null || remoteTime.isAfter(localTime))) ||
+          (localTime != null &&
+              (remoteTime == null || localTime.isAfter(remoteTime)));
 
-      bool needsRemoteToLocal = false;
-      bool needsLocalToRemote = false;
-
-      if (remoteTime != null &&
-          (localTime == null || remoteTime.isAfter(localTime))) {
-        needsRemoteToLocal = true;
-      }
-
-      if (localTime != null &&
-          (remoteTime == null || localTime.isAfter(remoteTime))) {
-        needsLocalToRemote = true;
-      }
-
-      if (needsRemoteToLocal || needsLocalToRemote) {
-        anyNeedsSync = true;
-        tableSynced[table] = false;
-
+      if (needsSync) {
         debugPrint(
-          '[SyncController] Table $table needs sync '
-          '${needsRemoteToLocal ? "(remote → local) " : ""}'
-          '${needsLocalToRemote ? "(local → remote)" : ""}',
+          '[SyncController] Table $table needs sync → marking ❌ and queuing',
         );
+        tableSynced[table] = false;
+        tableErrors[table] = 'Outdated or missing data';
+      } else {
+        debugPrint('[SyncController] Table $table already up-to-date ✅');
+        tableErrors[table] = null;
       }
     }
-
     isLoading.value = false;
-
-    if (!anyNeedsSync) {
-      Get.offAllNamed(AppRoutes.dashboard);
-    }
   }
 
-  /// Sync a single table
   Future<bool> _syncTable(String table, {bool isFirstTime = false}) async {
+    debugPrint('[SyncController] ===== SYNC START for: $table =====');
     tableSyncing[table] = true;
+    tableSynced[table] = false;
+    tableErrors[table] = null;
+
+    final hasNetwork = await connectivityClient.getSmartStatus();
+    debugPrint('[SyncController] Network check for $table: $hasNetwork');
+    if (!hasNetwork) {
+      debugPrint('[SyncController] No network — fail $table ❌');
+      tableSyncing[table] = false;
+      tableSynced[table] = false;
+      tableErrors[table] = 'No internet connection';
+      prefs.setBool('${YStrings.syncStatusPrefix}$table', false);
+      return false;
+    }
 
     try {
+      debugPrint('[SyncController] Fetching data from Firebase: $table');
       final data = await firebaseClient.fetchTableData(table);
+      debugPrint('[SyncController] $table fetched ${data.length} rows');
 
-      if (table == YStrings.notifications) {
+      if (table == YStrings.notifications || table == YStrings.items) {
+        debugPrint('[SyncController] Setting colSynced=1 for all rows: $table');
         final processedData = data.map((row) {
-          row['synced'] = 1;
+          row[YStrings.colSynced] = 1;
           return row;
         }).toList();
         await dbClient.insertOrUpdateTable(table, processedData);
       } else {
         await dbClient.insertOrUpdateTable(table, data);
       }
+      debugPrint('[SyncController] $table updated in local DB');
 
-      final remoteUpdatedAt = await firebaseClient.getTableUpdatedAt(table);
+      DateTime? remoteUpdatedAt;
+      try {
+        remoteUpdatedAt = await firebaseClient.getTableUpdatedAt(table);
+      } catch (e) {
+        debugPrint('[SyncController] getTableUpdatedAt($table) error: $e');
+      }
+
       await dbClient.updateSyncMetadata(table, remoteUpdatedAt);
+      debugPrint(
+        '[SyncController] $table sync metadata updated → $remoteUpdatedAt',
+      );
+
+      if (remoteUpdatedAt == null) {
+        debugPrint('[SyncController] No updatedAt received → fail $table ❌');
+        tableSynced[table] = false;
+        tableErrors[table] = 'Failed to retrieve update timestamp';
+        prefs.setBool('${YStrings.syncStatusPrefix}$table', false);
+        return false;
+      }
 
       prefs.setBool('${YStrings.syncStatusPrefix}$table', true);
       tableSynced[table] = true;
-
-      tableSyncing[table] = false;
+      tableErrors[table] = null;
+      debugPrint('[SyncController] Table $table sync SUCCESS ✅');
       return true;
     } catch (e, stack) {
-      debugPrint('[SyncController] Error syncing $table: $e');
+      debugPrint('[SyncController] Table $table sync FAILED ❌ → $e');
       debugPrint(stack.toString());
-
-      prefs.setBool('${YStrings.syncStatusPrefix}$table', false);
       tableSynced[table] = false;
-      tableSyncing[table] = false;
+      tableErrors[table] = e.toString();
+      prefs.setBool('${YStrings.syncStatusPrefix}$table', false);
       return false;
+    } finally {
+      tableSyncing[table] = false;
+      debugPrint('[SyncController] ===== SYNC END for: $table =====');
     }
   }
 
-  /// Trigger re-sync for a single table (from UI button)
   Future<void> resyncTable(String table) async {
+    debugPrint('[SyncController] Manual resync → $table');
     await _syncTable(table);
   }
 
-  /// Retry all failed tables
   Future<void> resyncFailedTables() async {
+    debugPrint('[SyncController] Resync ALL failed tables');
     for (final table in YArrays.allTables) {
-      if (!tableSynced[table]!) {
+      if (tableSynced[table] == false) {
         await _syncTable(table);
       }
     }
+  }
+
+  void continueToDashboard() {
+    debugPrint('[SyncController] Navigating to dashboard');
+    Get.offAllNamed(AppRoutes.dashboard);
   }
 }
