@@ -44,20 +44,12 @@ class NotificationListView extends StatelessWidget {
         ],
       ),
       body: Obx(() {
-        debugPrint(
-          "[NotificationListController] Notifications count: ${controller.notifications.length}",
-        );
-
         if (controller.notifications.isEmpty) {
-          debugPrint("[NotificationListController] No notifications found");
           return const Center(child: Text("No notifications found"));
         }
 
         return RefreshIndicator(
           onRefresh: () async {
-            debugPrint(
-              "[NotificationListController] Pull-to-refresh triggered",
-            );
             await controller.fetchNotifications();
           },
           child: ListView.builder(
@@ -65,14 +57,19 @@ class NotificationListView extends StatelessWidget {
             itemCount: controller.notifications.length,
             itemBuilder: (context, index) {
               final notif = controller.notifications[index];
-              debugPrint(
-                "[NotificationListController] Rendering notification index $index -> ${notif.id}",
-              );
-
               final synced = notif.synced;
               final dateStr = DateFormat(
                 'dd MMM yyyy, hh:mm a',
               ).format(DateTime.parse(notif.updatedAt));
+
+              final itemName =
+                  controller.itemNameCache[notif.itemId] ?? notif.itemId;
+              final warehouseName =
+                  controller.warehouseNameCache[notif.warehouseId] ??
+                  notif.warehouseId;
+              final locationName =
+                  controller.locationNameCache[notif.locationId] ??
+                  notif.locationId;
 
               return Card(
                 shape: RoundedRectangleBorder(
@@ -85,23 +82,24 @@ class NotificationListView extends StatelessWidget {
                 elevation: 2,
                 margin: const EdgeInsets.symmetric(vertical: 6),
                 child: ListTile(
-                  leading: Icon(
-                    notif.type == 'incoming'
-                        ? Icons.arrow_downward
-                        : Icons.arrow_upward,
-                    color: notif.type == 'incoming'
-                        ? Colors.green.shade700
-                        : Colors.red,
+                  // Leading number instead of arrow
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.blue.shade100,
+                    child: Text(
+                      "${index + 1}",
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
                   ),
                   title: Text(
-                    "${notif.itemId} (${notif.type == 'incoming' ? '+' : '-'}${notif.count})",
+                    "$itemName (${notif.type == 'incoming' ? '+' : '-'}${notif.count})",
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Show pretty warehouse & location names
                       Text(
-                        "${notif.warehouseId}, ${notif.locationId}",
+                        "$warehouseName, $locationName",
                         style: const TextStyle(fontSize: 12),
                       ),
                       const SizedBox(height: 4),
@@ -132,6 +130,15 @@ class NotificationListView extends StatelessWidget {
                         ],
                       ),
                     ],
+                  ),
+                  // Arrow moved to trailing
+                  trailing: Icon(
+                    notif.type == 'incoming'
+                        ? Icons.arrow_downward
+                        : Icons.arrow_upward,
+                    color: notif.type == 'incoming'
+                        ? Colors.green.shade700
+                        : Colors.red,
                   ),
                 ),
               );

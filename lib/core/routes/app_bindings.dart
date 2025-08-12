@@ -61,6 +61,7 @@ class NotificationListBinding extends Bindings {
   @override
   void dependencies() {
     final dbClient = Get.find<DatabaseClient>();
+    final sharedPrefs = Get.find<SharedPreferences>();
     final firebasePrefs = Get.find<FirebaseClient>();
     final connectivityClient = Get.find<ConnectivityClient>();
 
@@ -69,6 +70,7 @@ class NotificationListBinding extends Bindings {
         dbClient: dbClient,
         firebaseClient: firebasePrefs,
         connectivityClient: connectivityClient,
+        prefs: sharedPrefs,
       ),
     );
   }
