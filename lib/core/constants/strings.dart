@@ -26,15 +26,17 @@ class YStrings {
   static const colName = 'name';
   static const colAddress = 'address';
   static const colUpdatedAt = 'updatedAt';
+  static const colSyncedAt = 'syncedAt';
   static const colLocationId = 'locationId';
   static const colWarehouseId = 'warehouseId';
   static const colQuantity = 'quantity';
   static const colType = 'type';
   static const colItemId = 'itemId';
   static const colCount = 'count';
-  static const colSynced = 'synced';
   static const colEntity = 'entity';
-  static const colLastUpdatedAt = 'lastUpdatedAt';
+  static const colLastLocalUpdatedAt = 'lastLocalUpdatedAt';
+  static const colLastRemoteUpdatedAt = 'lastRemoteUpdatedAt';
+  static const colLastTableUpdatedAt = 'lastTableUpdatedAt';
 
   // -------------------------
   // Firebase specific keys

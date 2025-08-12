@@ -57,7 +57,7 @@ class NotificationListView extends StatelessWidget {
             itemCount: controller.notifications.length,
             itemBuilder: (context, index) {
               final notif = controller.notifications[index];
-              final synced = notif.synced;
+              final isSynced = notif.syncedAt != null;
               final dateStr = DateFormat(
                 'dd MMM yyyy, hh:mm a',
               ).format(DateTime.parse(notif.updatedAt));
@@ -75,14 +75,13 @@ class NotificationListView extends StatelessWidget {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                   side: BorderSide(
-                    color: synced ? Colors.green : Colors.orange,
+                    color: isSynced ? Colors.green : Colors.orange,
                     width: 1.5,
                   ),
                 ),
                 elevation: 2,
                 margin: const EdgeInsets.symmetric(vertical: 6),
                 child: ListTile(
-                  // Leading number instead of arrow
                   leading: CircleAvatar(
                     backgroundColor: Colors.blue.shade100,
                     child: Text(
@@ -97,7 +96,6 @@ class NotificationListView extends StatelessWidget {
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Show pretty warehouse & location names
                       Text(
                         "$warehouseName, $locationName",
                         style: const TextStyle(fontSize: 12),
@@ -114,16 +112,16 @@ class NotificationListView extends StatelessWidget {
                       Row(
                         children: [
                           Icon(
-                            synced ? Icons.cloud_done : Icons.cloud_upload,
+                            isSynced ? Icons.cloud_done : Icons.cloud_upload,
                             size: 14,
-                            color: synced ? Colors.green : Colors.orange,
+                            color: isSynced ? Colors.green : Colors.orange,
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            synced ? "Synced" : "Pending Sync",
+                            isSynced ? "Synced" : "Pending Sync",
                             style: TextStyle(
                               fontSize: 11,
-                              color: synced ? Colors.green : Colors.orange,
+                              color: isSynced ? Colors.green : Colors.orange,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -131,7 +129,6 @@ class NotificationListView extends StatelessWidget {
                       ),
                     ],
                   ),
-                  // Arrow moved to trailing
                   trailing: Icon(
                     notif.type == 'incoming'
                         ? Icons.arrow_downward

@@ -8,7 +8,7 @@ class NotificationModel {
   final String warehouseId;
   final String locationId;
   final String updatedAt;
-  final bool synced;
+  final String? syncedAt;
 
   NotificationModel({
     required this.id,
@@ -18,9 +18,10 @@ class NotificationModel {
     required this.warehouseId,
     required this.locationId,
     required this.updatedAt,
-    required this.synced,
+    this.syncedAt,
   });
 
+  /// Build from Firestore/remote JSON
   factory NotificationModel.fromJson(Map<String, dynamic> json) {
     return NotificationModel(
       id: json[YStrings.colId] as String,
@@ -30,23 +31,25 @@ class NotificationModel {
       warehouseId: json[YStrings.colWarehouseId] as String,
       locationId: json[YStrings.colLocationId] as String,
       updatedAt: json[YStrings.colUpdatedAt] as String,
-      synced: json[YStrings.colSynced] == 1,
+      syncedAt: json[YStrings.colSyncedAt] as String?,
     );
   }
 
+  /// Build from local SQLite DB map
   factory NotificationModel.fromDb(Map<String, dynamic> map) {
     return NotificationModel(
-      id: map[YStrings.colId],
-      type: map[YStrings.colType],
-      itemId: map[YStrings.colItemId],
-      count: map[YStrings.colCount],
-      warehouseId: map[YStrings.colWarehouseId],
-      locationId: map[YStrings.colLocationId],
-      updatedAt: map[YStrings.colUpdatedAt],
-      synced: map[YStrings.colSynced] == 1,
+      id: map[YStrings.colId] as String,
+      type: map[YStrings.colType] as String,
+      itemId: map[YStrings.colItemId] as String,
+      count: map[YStrings.colCount] as int,
+      warehouseId: map[YStrings.colWarehouseId] as String,
+      locationId: map[YStrings.colLocationId] as String,
+      updatedAt: map[YStrings.colUpdatedAt] as String,
+      syncedAt: map[YStrings.colSyncedAt] as String?,
     );
   }
 
+  /// Convert to a map for saving to DB or Firestore
   Map<String, dynamic> toMap() {
     return {
       YStrings.colId: id,
@@ -56,7 +59,7 @@ class NotificationModel {
       YStrings.colWarehouseId: warehouseId,
       YStrings.colLocationId: locationId,
       YStrings.colUpdatedAt: updatedAt,
-      YStrings.colSynced: synced ? 1 : 0,
+      YStrings.colSyncedAt: syncedAt,
     };
   }
 
@@ -69,7 +72,7 @@ class NotificationModel {
       warehouseId: '',
       locationId: '',
       updatedAt: '',
-      synced: false,
+      syncedAt: null,
     );
   }
 
@@ -81,7 +84,7 @@ class NotificationModel {
     String? warehouseId,
     String? locationId,
     String? updatedAt,
-    bool? synced,
+    String? syncedAt,
   }) {
     return NotificationModel(
       id: id ?? this.id,
@@ -91,7 +94,10 @@ class NotificationModel {
       warehouseId: warehouseId ?? this.warehouseId,
       locationId: locationId ?? this.locationId,
       updatedAt: updatedAt ?? this.updatedAt,
-      synced: synced ?? this.synced,
+      syncedAt: syncedAt ?? this.syncedAt,
     );
   }
+
+  /// Quick check if this notification is already synced
+  bool get isSynced => syncedAt != null;
 }

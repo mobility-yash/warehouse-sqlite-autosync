@@ -8,7 +8,7 @@ import 'package:warehouse_data_autosync/core/common/models/warehouse_model.dart'
 abstract class DatabaseClient {
   Future<Database> get database;
 
-  // Items
+  // ===== Items =====
   Future<void> insertItems(List<ItemModel> items);
   Future<List<ItemModel>> getUnsyncedItems();
   Future<void> markItemsAsSynced(List<String> ids);
@@ -16,45 +16,62 @@ abstract class DatabaseClient {
   Future<bool> isItemsTableNotEmpty();
   Future<void> clearItems();
 
-  // Locations
+  // ===== Locations =====
   Future<void> insertLocations(List<LocationModel> locations);
   Future<List<LocationModel>> getLocations();
   Future<bool> isLocationsTableNotEmpty();
   Future<void> clearLocations();
 
-  // Warehouses
+  // ===== Warehouses =====
   Future<void> insertWarehouses(List<WarehouseModel> warehouses);
   Future<List<WarehouseModel>> getWarehousesByLocationId(String locationId);
   Future<bool> isWarehousesTableNotEmpty();
   Future<void> clearWarehouses();
 
-  // Notifications
+  // ===== Notifications =====
   Future<List<NotificationModel>> getNotifications();
   Future<void> insertNotifications(List<NotificationModel> notifications);
-  Future<List<NotificationModel>> getUnsyncedNotifications();
+  Future<List<NotificationModel>>
+  getUnsyncedNotifications(); // colSyncedAt == null
   Future<void> markNotificationsAsSynced(List<String> ids);
   Future<bool> isNotificationsTableNotEmpty();
   Future<void> clearNotifications();
 
-  // Sync metadata
+  // ===== Sync metadata (bidirectional sync support) =====
   Future<void> insertInitialSyncMetadata();
-  Future<void> updateLastUpdatedAt({
+
+  // Local-only change
+  Future<void> updateLastLocalUpdatedAt({
     required String entity,
-    required String lastUpdatedAt,
+    required String lastLocalUpdatedAt,
   });
+
+  // Remote-only change
+  Future<void> updateLastRemoteUpdatedAt({
+    required String entity,
+    required String lastRemoteUpdatedAt,
+  });
+
+  // Both after full sync
+  Future<void> updateBothLocalAndRemoteTimestamps({
+    required String entity,
+    required String updatedAt,
+  });
+
   Future<SyncMetadataModel?> getSyncMetadata(String entity);
   Future<bool> isSyncMetadataTableNotEmpty();
   Future<void> clearSyncMetadata();
 
+  // Helper methods for specific tables (optional, can call the above methods directly)
   Future<void> updateLocationsSync(String lastUpdatedAt);
   Future<void> updateWarehousesSync(String lastUpdatedAt);
   Future<void> updateItemsSync(String lastUpdatedAt);
   Future<void> updateNotificationsSync(String lastUpdatedAt);
 
-  Future<Map<String, DateTime?>> getSyncMetadataMap();
+  // Utilities
+  Future<Map<String, SyncMetadataModel>> getAllSyncMetadata();
   Future<void> insertOrUpdateTable(
     String table,
     List<Map<String, dynamic>> data,
   );
-  Future<void> updateSyncMetadata(String entity, DateTime? lastUpdatedAt);
 }

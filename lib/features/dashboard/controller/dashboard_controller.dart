@@ -45,27 +45,19 @@ class DashboardController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    debugPrint("[DashboardController] onInit() called");
     fetchLocations();
   }
 
   Future<void> fetchLocations() async {
-    debugPrint("[DashboardController] Fetching locations from DB...");
     final locModels = await dbClient.getLocations();
-    debugPrint("[DashboardController] Found ${locModels.length} locations");
     locModels.sort((a, b) => a.name.compareTo(b.name));
     locations.value = locModels
         .map((l) => {YStrings.colId: l.id, YStrings.colName: l.name})
         .toList();
-    debugPrint("[DashboardController] Locations loaded: $locations");
   }
 
   Future<void> fetchWarehouses(String locationId) async {
-    debugPrint(
-      "[DashboardController] Fetching warehouses for locationId: $locationId",
-    );
     final whModels = await dbClient.getWarehousesByLocationId(locationId);
-    debugPrint("[DashboardController] Found ${whModels.length} warehouses");
     whModels.sort((a, b) => a.name.compareTo(b.name));
     warehouses.value = whModels
         .map((w) => {YStrings.colId: w.id, YStrings.colName: w.name})
@@ -78,16 +70,12 @@ class DashboardController extends GetxController {
   }
 
   Future<void> fetchItems(String warehouseId) async {
-    debugPrint(
-      "[DashboardController] Fetching items for warehouseId: $warehouseId",
-    );
     isLoadingItems.value = true;
     items.clear();
     selectedItem.value = null;
     selectedItemId.value = null;
 
     final itemModels = await dbClient.getItemsByWarehouseId(warehouseId);
-    debugPrint("[DashboardController] Found ${itemModels.length} items");
     itemModels.sort((a, b) => a.name.compareTo(b.name));
     items.value = itemModels
         .map(
@@ -101,7 +89,6 @@ class DashboardController extends GetxController {
     isLoadingItems.value = false;
   }
 
-  /// This is the unified submit method: sync old unsynced -> submit current -> update metadata
   Future<void> submitNotification() async {
     final selectedId = selectedItemId.value;
     final now = DateTime.now();
@@ -113,7 +100,6 @@ class DashboardController extends GetxController {
       );
       return;
     }
-
     if (selectedId == null ||
         selectedWarehouseId.value == null ||
         selectedLocationId.value == null) {
@@ -122,70 +108,56 @@ class DashboardController extends GetxController {
     }
 
     isSubmitting.value = true;
-
     try {
       final hasNetwork = await connectivityClient.getSmartStatus();
-      debugPrint("[DashboardController] Network available? $hasNetwork");
 
       if (hasNetwork) {
-        // 1️⃣ Push old unsynced items
         final oldItems = await dbClient.getUnsyncedItems();
         for (final item in oldItems) {
-          try {
-            await firebaseClient.saveItem(item);
-            await dbClient.markItemsAsSynced([item.id]);
-            debugPrint("[DashboardController] Old item synced: ${item.id}");
-          } catch (e) {
-            _showToast(
-              "Error syncing old item: ${e.toString()}",
-              isError: true,
-            );
-            return;
-          }
+          await firebaseClient.saveItem(item);
+          await dbClient.markItemsAsSynced([item.id]);
         }
-
-        // 2️⃣ Push old unsynced notifications
         final oldNotifs = await dbClient.getUnsyncedNotifications();
         for (final notif in oldNotifs) {
-          try {
-            await firebaseClient.saveNotification(notif);
-            await dbClient.markNotificationsAsSynced([notif.id]);
-            debugPrint(
-              "[DashboardController] Old notification synced: ${notif.id}",
-            );
-          } catch (e) {
-            _showToast(
-              "Error syncing old notification: ${e.toString()}",
-              isError: true,
-            );
-            return;
-          }
+          await firebaseClient.saveNotification(notif);
+          await dbClient.markNotificationsAsSynced([notif.id]);
         }
 
-        // 3️⃣ Submit the current notification
         await _submitCurrentNotification(syncToFirebase: true);
 
-        // 4️⃣ Update metadata on both remote/server and locally
-        try {
-          await firebaseClient.updateSyncMetadata(YStrings.items, now);
-          await firebaseClient.updateSyncMetadata(YStrings.notifications, now);
-        } catch (e) {
-          debugPrint("[DashboardController] Remote metadata update failed: $e");
-        }
-        await dbClient.updateSyncMetadata(YStrings.items, now);
-        await dbClient.updateSyncMetadata(YStrings.notifications, now);
-        debugPrint("[DashboardController] Metadata updated");
-      } else {
-        debugPrint(
-          "[DashboardController] Offline mode -> Save directly locally",
+        await firebaseClient.updateSyncMetadata(
+          entity: YStrings.items,
+          lastTableUpdatedAt: now,
         );
+        await firebaseClient.updateSyncMetadata(
+          entity: YStrings.notifications,
+          lastTableUpdatedAt: now,
+        );
+
+        await dbClient.updateBothLocalAndRemoteTimestamps(
+          entity: YStrings.items,
+          updatedAt: now.toIso8601String(),
+        );
+        await dbClient.updateBothLocalAndRemoteTimestamps(
+          entity: YStrings.notifications,
+          updatedAt: now.toIso8601String(),
+        );
+      } else {
         await _submitCurrentNotification(syncToFirebase: false);
-        await dbClient.updateSyncMetadata(YStrings.items, now);
-        await dbClient.updateSyncMetadata(YStrings.notifications, now);
+
+        await dbClient.updateLastLocalUpdatedAt(
+          entity: YStrings.items,
+          lastLocalUpdatedAt: now.toIso8601String(),
+        );
+        await dbClient.updateLastLocalUpdatedAt(
+          entity: YStrings.notifications,
+          lastLocalUpdatedAt: now.toIso8601String(),
+        );
       }
+    } catch (e) {
+      _showToast("Error: ${e.toString()}", isError: true);
     } finally {
       isSubmitting.value = false;
-      debugPrint("[DashboardController] submitNotification complete");
     }
   }
 
@@ -197,26 +169,20 @@ class DashboardController extends GetxController {
       selectedWarehouseId.value!,
     );
     final item = allItems.firstWhere((i) => i.id == selectedId);
-
     int currentQty = item.quantity;
-    int newQty = currentQty;
+    int newQty = isOutgoing
+        ? currentQty - count.value
+        : currentQty + count.value;
 
-    if (isOutgoing) {
-      if (count.value > currentQty) {
-        throw Exception(YStrings.errNotEnoughStock);
-      }
-      newQty -= count.value;
-    } else {
-      newQty += count.value;
+    if (isOutgoing && newQty < 0) {
+      throw Exception(YStrings.errNotEnoughStock);
     }
 
     final now = DateTime.now();
-    final updatedAt = now.toIso8601String();
-
     final updatedItem = item.copyWith(
       quantity: newQty,
-      updatedAt: updatedAt,
-      synced: syncToFirebase,
+      updatedAt: now.toIso8601String(),
+      syncedAt: syncToFirebase ? now.toIso8601String() : null,
     );
 
     final newNotification = NotificationModel(
@@ -226,12 +192,12 @@ class DashboardController extends GetxController {
       count: count.value,
       warehouseId: selectedWarehouseId.value!,
       locationId: selectedLocationId.value!,
-      updatedAt: updatedAt,
-      synced: syncToFirebase,
+      updatedAt: now.toIso8601String(),
+      syncedAt: syncToFirebase ? now.toIso8601String() : null,
     );
 
-    if (syncToFirebase) {
-      try {
+    try {
+      if (syncToFirebase) {
         await firebaseClient.submitNotification(
           type: notificationType.value,
           itemId: selectedId,
@@ -239,29 +205,26 @@ class DashboardController extends GetxController {
           warehouseId: selectedWarehouseId.value!,
           locationId: selectedLocationId.value!,
         );
-
         await dbClient.insertItems([updatedItem]);
         await dbClient.insertNotifications([newNotification]);
         lastUnsyncedItemIds.remove(selectedId);
         _showToast("Notification submitted & synced");
-      } catch (e) {
-        await dbClient.insertItems([updatedItem.copyWith(synced: false)]);
-        await dbClient.insertNotifications([
-          newNotification.copyWith(synced: false),
-        ]);
+      } else {
+        await dbClient.insertItems([updatedItem]);
+        await dbClient.insertNotifications([newNotification]);
         lastUnsyncedItemIds.add(selectedId);
-        _showToast(
-          "Saved locally but failed to sync: ${e.toString()}",
-          isError: true,
-        );
+        _showToast("Saved locally, will sync later", isError: true);
       }
-    } else {
-      await dbClient.insertItems([updatedItem.copyWith(synced: false)]);
+    } catch (e) {
+      await dbClient.insertItems([updatedItem.copyWith(syncedAt: null)]);
       await dbClient.insertNotifications([
-        newNotification.copyWith(synced: false),
+        newNotification.copyWith(syncedAt: null),
       ]);
       lastUnsyncedItemIds.add(selectedId);
-      _showToast("Saved locally, will sync later", isError: true);
+      _showToast(
+        "Saved locally but failed to sync: ${e.toString()}",
+        isError: true,
+      );
     }
 
     await refreshSelectedItem(selectedId);
@@ -284,7 +247,6 @@ class DashboardController extends GetxController {
   }
 
   void _showToast(String message, {bool isError = false}) {
-    debugPrint("[DashboardController] ${isError ? 'ERROR' : 'INFO'}: $message");
     Fluttertoast.showToast(
       msg: message,
       toastLength: Toast.LENGTH_LONG,
@@ -296,7 +258,6 @@ class DashboardController extends GetxController {
   }
 
   void continueToNotificationList() {
-    debugPrint('[DashboardController] Navigating to NotificationList');
     Get.toNamed(AppRoutes.notificationList);
   }
 }

@@ -43,6 +43,7 @@ class _DummyDataUploaderViewState extends State<DummyDataUploaderView> {
         YStrings.colName: locName,
         YStrings.colAddress: '$locName Main Street',
         YStrings.colUpdatedAt: now,
+        YStrings.colSyncedAt: now,
       });
       latestLocationUpdate = now;
 
@@ -62,6 +63,7 @@ class _DummyDataUploaderViewState extends State<DummyDataUploaderView> {
           YStrings.colLocationId: locationRef.id,
           YStrings.colAddress: '$name, $locName',
           YStrings.colUpdatedAt: now,
+          YStrings.colSyncedAt: now,
         });
         latestWarehouseUpdate = now;
 
@@ -84,6 +86,7 @@ class _DummyDataUploaderViewState extends State<DummyDataUploaderView> {
             YStrings.colLocationId: locationRef.id,
             YStrings.colQuantity: quantity,
             YStrings.colUpdatedAt: now,
+            YStrings.colSyncedAt: now,
           });
           latestItemUpdate = now;
 
@@ -101,6 +104,7 @@ class _DummyDataUploaderViewState extends State<DummyDataUploaderView> {
               YStrings.colWarehouseId: warehouseRef.id,
               YStrings.colLocationId: locationRef.id,
               YStrings.colUpdatedAt: now,
+              YStrings.colSyncedAt: now,
             });
             latestNotificationUpdate = now;
             notificationAdded = true;
@@ -116,20 +120,20 @@ class _DummyDataUploaderViewState extends State<DummyDataUploaderView> {
 
     await metadataCollection.doc(YStrings.locations).set({
       YStrings.colEntity: YStrings.locations,
-      YStrings.colLastUpdatedAt: latestLocationUpdate,
+      YStrings.colLastTableUpdatedAt: latestLocationUpdate,
     });
     await metadataCollection.doc(YStrings.warehouses).set({
       YStrings.colEntity: YStrings.warehouses,
-      YStrings.colLastUpdatedAt: latestWarehouseUpdate,
+      YStrings.colLastTableUpdatedAt: latestWarehouseUpdate,
     });
     await metadataCollection.doc(YStrings.items).set({
       YStrings.colEntity: YStrings.items,
-      YStrings.colLastUpdatedAt: latestItemUpdate,
+      YStrings.colLastTableUpdatedAt: latestItemUpdate,
     });
     if (latestNotificationUpdate != null) {
       await metadataCollection.doc(YStrings.notifications).set({
         YStrings.colEntity: YStrings.notifications,
-        YStrings.colLastUpdatedAt: latestNotificationUpdate,
+        YStrings.colLastTableUpdatedAt: latestNotificationUpdate,
       });
     }
 

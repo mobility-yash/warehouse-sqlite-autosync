@@ -30,22 +30,20 @@ class NotificationListController extends GetxController {
 
   @override
   void onInit() {
-    debugPrint("[NotificationListController] onInit() called");
     super.onInit();
     fetchNotifications();
   }
 
-  /// Fetch notifications and preload warehouse/location names
   Future<void> fetchNotifications() async {
-    debugPrint("[NotificationListController] Fetching notifications...");
     final notifModels = await dbClient.getNotifications();
 
     notifModels.sort((a, b) {
-      if (a.synced != b.synced) return a.synced ? 1 : -1;
+      final aSynced = a.syncedAt != null;
+      final bSynced = b.syncedAt != null;
+      if (aSynced != bSynced) return aSynced ? 1 : -1;
       return DateTime.parse(b.updatedAt).compareTo(DateTime.parse(a.updatedAt));
     });
 
-    // Cache names
     for (final notif in notifModels) {
       if (!warehouseNameCache.containsKey(notif.warehouseId)) {
         warehouseNameCache[notif.warehouseId] = await _getWarehouseName(
@@ -63,18 +61,11 @@ class NotificationListController extends GetxController {
     }
 
     notifications.value = notifModels;
-    debugPrint(
-      "[NotificationListController] Updated list with ${notifications.length} notifications",
-    );
   }
 
-  /// Sync data with Firebase
   Future<void> syncUnsyncedData() async {
-    debugPrint("[NotificationListController] syncUnsyncedData started");
-
     final hasNetwork = await connectivityClient.getSmartStatus();
     if (!hasNetwork) {
-      debugPrint("[NotificationListController] No network connection");
       _showToast(
         "No internet connection. Please try again later.",
         isError: true,
@@ -87,7 +78,6 @@ class NotificationListController extends GetxController {
 
     if (unsyncedItems.isEmpty && unsyncedNotifs.isEmpty) {
       _showToast("Already synced");
-      debugPrint("[NotificationListController] Already synced — no action");
       return;
     }
 
@@ -95,23 +85,19 @@ class NotificationListController extends GetxController {
     bool allSuccess = true;
 
     try {
-      // ==== Sync Items ====
       for (final item in unsyncedItems) {
         try {
           await firebaseClient.saveItem(item);
           await dbClient.markItemsAsSynced([item.id]);
           prefs.setBool('${YStrings.syncStatusPrefix}${YStrings.items}', true);
-          debugPrint("[NotificationListController] Synced item: ${item.id}");
         } catch (e) {
           allSuccess = false;
           prefs.setBool('${YStrings.syncStatusPrefix}${YStrings.items}', false);
-          debugPrint("[NotificationListController] Item ${item.id} failed: $e");
           _showToast("Failed to sync item: ${e.toString()}", isError: true);
           return;
         }
       }
 
-      // ==== Sync Notifications ====
       for (final notif in unsyncedNotifs) {
         try {
           await firebaseClient.saveNotification(notif);
@@ -120,18 +106,16 @@ class NotificationListController extends GetxController {
             '${YStrings.syncStatusPrefix}${YStrings.notifications}',
             true,
           );
-          debugPrint(
-            "[NotificationListController] Synced notification: ${notif.id}",
-          );
         } catch (e) {
           allSuccess = false;
           prefs.setBool(
             '${YStrings.syncStatusPrefix}${YStrings.notifications}',
             false,
           );
-          final errorMsg = "Notification ${notif.id} failed to sync: $e";
-          debugPrint("[NotificationListController] $errorMsg");
-          _showToast(errorMsg, isError: true);
+          _showToast(
+            "Notification ${notif.id} failed to sync: $e",
+            isError: true,
+          );
           return;
         }
       }
@@ -139,16 +123,28 @@ class NotificationListController extends GetxController {
       final now = DateTime.now();
 
       try {
-        await firebaseClient.updateSyncMetadata(YStrings.items, now);
-        await firebaseClient.updateSyncMetadata(YStrings.notifications, now);
+        await firebaseClient.updateSyncMetadata(
+          entity: YStrings.items,
+          lastTableUpdatedAt: now,
+        );
+        await firebaseClient.updateSyncMetadata(
+          entity: YStrings.notifications,
+          lastTableUpdatedAt: now,
+        );
       } catch (e) {
         debugPrint(
           "[NotificationListController] Remote metadata update failed: $e",
         );
       }
 
-      await dbClient.updateSyncMetadata(YStrings.items, now);
-      await dbClient.updateSyncMetadata(YStrings.notifications, now);
+      await dbClient.updateBothLocalAndRemoteTimestamps(
+        entity: YStrings.items,
+        updatedAt: now.toIso8601String(),
+      );
+      await dbClient.updateBothLocalAndRemoteTimestamps(
+        entity: YStrings.notifications,
+        updatedAt: now.toIso8601String(),
+      );
 
       prefs.setBool(YStrings.lastInitSyncSuccess, allSuccess);
 
@@ -159,7 +155,6 @@ class NotificationListController extends GetxController {
       await fetchNotifications();
     } finally {
       isSyncing.value = false;
-      debugPrint("[NotificationListController] syncUnsyncedData complete");
     }
   }
 
@@ -177,9 +172,7 @@ class NotificationListController extends GetxController {
     return itemId;
   }
 
-  /// Get readable warehouse name from DB
   Future<String> _getWarehouseName(String warehouseId) async {
-    // You can add DatabaseClient.getWarehouseNameById for more efficiency
     final db = await dbClient.database;
     final res = await db.query(
       YStrings.warehouses,
@@ -190,10 +183,9 @@ class NotificationListController extends GetxController {
     if (res.isNotEmpty) {
       return res.first[YStrings.colName] as String;
     }
-    return warehouseId; // fallback to ID
+    return warehouseId;
   }
 
-  /// Get readable location name from DB
   Future<String> _getLocationName(String locationId) async {
     final db = await dbClient.database;
     final res = await db.query(
@@ -205,10 +197,9 @@ class NotificationListController extends GetxController {
     if (res.isNotEmpty) {
       return res.first[YStrings.colName] as String;
     }
-    return locationId; // fallback to ID
+    return locationId;
   }
 
-  /// Show toast helper
   void _showToast(String message, {bool isError = false}) {
     Fluttertoast.showToast(
       msg: message,

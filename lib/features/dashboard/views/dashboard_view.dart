@@ -16,9 +16,9 @@ class DashboardView extends StatelessWidget {
         title: const Text('Dashboard'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.list),
+            icon: const Icon(Icons.list_alt),
             tooltip: 'View Notifications',
-            onPressed: () => controller.continueToNotificationList(),
+            onPressed: controller.continueToNotificationList,
           ),
         ],
       ),
@@ -34,6 +34,7 @@ class DashboardView extends StatelessWidget {
                 final qty = controller.count.value;
                 final isOutgoing = controller.isOutgoing;
                 final currentQty = selectedItem?[YStrings.colQuantity] ?? 0;
+
                 Widget infoTextWidget = const SizedBox();
 
                 if (selectedLocation != null &&
@@ -54,38 +55,47 @@ class DashboardView extends StatelessWidget {
                       ? currentQty - qty
                       : currentQty + qty;
 
-                  infoTextWidget = Text.rich(
-                    TextSpan(
-                      children: [
-                        const TextSpan(text: 'You are about to '),
-                        TextSpan(
-                          text: isOutgoing ? 'export ' : 'import ',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        TextSpan(
-                          text:
-                              '$qty ${selectedItem?[YStrings.colName] ?? 'items'} ',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        TextSpan(text: isOutgoing ? 'from ' : 'to '),
-                        TextSpan(
-                          text: '$warehouseName, $locationName',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        const TextSpan(text: '. Current stock is '),
-                        TextSpan(
-                          text: '$currentQty',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        const TextSpan(
-                          text: ' and after transaction it will be ',
-                        ),
-                        TextSpan(
-                          text: '$remainingQty',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        const TextSpan(text: '.'),
-                      ],
+                  infoTextWidget = Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          const TextSpan(text: 'You are about to '),
+                          TextSpan(
+                            text: isOutgoing ? 'export ' : 'import ',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          TextSpan(
+                            text:
+                                '$qty ${selectedItem?[YStrings.colName] ?? 'items'} ',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          TextSpan(
+                            text: isOutgoing ? 'from ' : 'to ',
+                            style: const TextStyle(),
+                          ),
+                          TextSpan(
+                            text: '$warehouseName, $locationName',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          const TextSpan(
+                            text: '. Current stock is ',
+                            style: TextStyle(),
+                          ),
+                          TextSpan(
+                            text: '$currentQty',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          const TextSpan(
+                            text: ' and after transaction it will be ',
+                          ),
+                          TextSpan(
+                            text: '$remainingQty',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          const TextSpan(text: '.'),
+                        ],
+                      ),
                     ),
                   );
                 }
@@ -162,23 +172,23 @@ class DashboardView extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.remove),
+                          icon: const Icon(Icons.remove_circle_outline),
                           onPressed: (selectedItem == null || qty <= 0)
                               ? null
                               : () => controller.count.value--,
                         ),
                         Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
                           child: Text(
                             '$qty',
                             style: const TextStyle(
-                              fontSize: 18,
                               fontWeight: FontWeight.bold,
+                              fontSize: 20,
                             ),
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.add),
+                          icon: const Icon(Icons.add_circle_outline),
                           onPressed:
                               (selectedItem == null ||
                                   (isOutgoing && qty >= currentQty) ||
@@ -188,10 +198,7 @@ class DashboardView extends StatelessWidget {
                         ),
                       ],
                     ),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: infoTextWidget,
-                    ),
+                    infoTextWidget,
                   ],
                 );
               }),
@@ -207,14 +214,20 @@ class DashboardView extends StatelessWidget {
                       (controller.selectedItem.value == null ||
                           controller.isSubmitting.value)
                       ? null
-                      : controller.submitNotification, // unified method
+                      : controller.submitNotification,
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
                   child: controller.isSubmitting.value
                       ? const SizedBox(
                           width: 18,
                           height: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Submit Notification'),
+                      : const Text(
+                          'Submit Notification',
+                          style: TextStyle(fontSize: 16),
+                        ),
                 ),
               ),
             ),

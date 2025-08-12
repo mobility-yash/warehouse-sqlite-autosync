@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import 'package:warehouse_data_autosync/core/common/models/item_model.dart';
 import 'package:warehouse_data_autosync/core/common/models/notification_model.dart';
@@ -9,73 +8,87 @@ import 'firebase_client.dart';
 
 class FirebaseClientImpl implements FirebaseClient {
   final FirebaseFirestore _firestore;
-
   FirebaseClientImpl({FirebaseFirestore? firestore})
     : _firestore = firestore ?? FirebaseFirestore.instance;
 
-  // ----------------------
-  // Helper: parse DateTime from stored field (Timestamp or ISO string)
-  // ----------------------
   DateTime? _parseDateTime(dynamic value) {
     if (value == null) return null;
     try {
       if (value is Timestamp) return value.toDate();
-      if (value is DateTime) return value;
+      if (value is String) return DateTime.tryParse(value);
       if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
-      if (value is String) return DateTime.parse(value);
-    } catch (e, st) {
-      debugPrint('[FirebaseClientImpl] _parseDateTime error: $e');
-      debugPrint(st.toString());
-    }
+      if (value is DateTime) return value;
+    } catch (_) {}
     return null;
   }
 
-  // ----------------------
-  // LOCATIONS
-  // ----------------------
+  // ================= LOCATIONS =================
   @override
-  Future<List<DocumentSnapshot>> fetchLocations() async {
-    final snapshot = await _firestore.collection(YStrings.locations).get();
-    final sorted = snapshot.docs
+  Future<List<DocumentSnapshot>> fetchLocations({
+    DateTime? updatedAfter,
+  }) async {
+    Query query = _firestore.collection(YStrings.locations);
+    if (updatedAfter != null) {
+      query = query.where(
+        YStrings.colUpdatedAt,
+        isGreaterThan: updatedAfter.toIso8601String(),
+      );
+    }
+    final snapshot = await query.get();
+    final docs = snapshot.docs
       ..sort(
         (a, b) =>
             (a[YStrings.colName] ?? '').compareTo(b[YStrings.colName] ?? ''),
       );
-    return sorted;
+    return docs;
   }
 
-  // ----------------------
-  // WAREHOUSES
-  // ----------------------
+  // ================= WAREHOUSES =================
   @override
-  Future<List<DocumentSnapshot>> fetchWarehouses(String locationId) async {
-    final snapshot = await _firestore
+  Future<List<DocumentSnapshot>> fetchWarehouses(
+    String locationId, {
+    DateTime? updatedAfter,
+  }) async {
+    Query query = _firestore
         .collection(YStrings.warehouses)
-        .where(YStrings.colLocationId, isEqualTo: locationId)
-        .get();
-    final sorted = snapshot.docs
+        .where(YStrings.colLocationId, isEqualTo: locationId);
+    if (updatedAfter != null) {
+      query = query.where(
+        YStrings.colUpdatedAt,
+        isGreaterThan: updatedAfter.toIso8601String(),
+      );
+    }
+    final snapshot = await query.get();
+    final docs = snapshot.docs
       ..sort(
         (a, b) =>
             (a[YStrings.colName] ?? '').compareTo(b[YStrings.colName] ?? ''),
       );
-    return sorted;
+    return docs;
   }
 
-  // ----------------------
-  // ITEMS
-  // ----------------------
+  // ================= ITEMS =================
   @override
-  Future<List<DocumentSnapshot>> fetchItems(String warehouseId) async {
-    final snapshot = await _firestore
+  Future<List<DocumentSnapshot>> fetchItems(
+    String warehouseId, {
+    DateTime? updatedAfter,
+  }) async {
+    Query query = _firestore
         .collection(YStrings.items)
-        .where(YStrings.colWarehouseId, isEqualTo: warehouseId)
-        .get();
-    final sorted = snapshot.docs
+        .where(YStrings.colWarehouseId, isEqualTo: warehouseId);
+    if (updatedAfter != null) {
+      query = query.where(
+        YStrings.colUpdatedAt,
+        isGreaterThan: updatedAfter.toIso8601String(),
+      );
+    }
+    final snapshot = await query.get();
+    final docs = snapshot.docs
       ..sort(
         (a, b) =>
             (a[YStrings.colName] ?? '').compareTo(b[YStrings.colName] ?? ''),
       );
-    return sorted;
+    return docs;
   }
 
   @override
@@ -84,19 +97,17 @@ class FirebaseClientImpl implements FirebaseClient {
     return doc.exists ? doc : null;
   }
 
-  // ----------------------
-  // ITEMS - SYNC to Firestore
-  // ----------------------
   @override
   Future<void> saveItem(ItemModel item) async {
-    debugPrint('[FirebaseClientImpl] Saving item to Firestore: ${item.id}');
-    final docRef = _firestore.collection(YStrings.items).doc(item.id);
-    await docRef.set(item.toMap(), SetOptions(merge: true));
+    final now = DateTime.now().toIso8601String();
+    await _firestore.collection(YStrings.items).doc(item.id).set({
+      ...item.toMap(),
+      YStrings.colUpdatedAt: now,
+      YStrings.colSyncedAt: now,
+    }, SetOptions(merge: true));
   }
 
-  // ----------------------
-  // NOTIFICATIONS
-  // ----------------------
+  // ================= NOTIFICATIONS =================
   @override
   Future<void> submitNotification({
     required String type,
@@ -115,9 +126,7 @@ class FirebaseClientImpl implements FirebaseClient {
       int newQty = currentQty;
 
       if (type == YStrings.transactionOutgoing) {
-        if (count > currentQty) {
-          throw Exception(YStrings.errNotEnoughStock);
-        }
+        if (count > currentQty) throw Exception(YStrings.errNotEnoughStock);
         newQty -= count;
       } else {
         newQty += count;
@@ -126,33 +135,32 @@ class FirebaseClientImpl implements FirebaseClient {
       transaction.update(itemRef, {
         YStrings.colQuantity: newQty,
         YStrings.colUpdatedAt: DateTime.now().toIso8601String(),
+        YStrings.colSyncedAt: DateTime.now().toIso8601String(),
       });
 
-      final notificationRef = _firestore
-          .collection(YStrings.notifications)
-          .doc();
-      transaction.set(notificationRef, {
-        YStrings.colId: const Uuid().v4(),
-        YStrings.colType: type,
-        YStrings.colItemId: itemId,
-        YStrings.colCount: count,
-        YStrings.colWarehouseId: warehouseId,
-        YStrings.colLocationId: locationId,
-        YStrings.colUpdatedAt: DateTime.now().toIso8601String(),
-        YStrings.colSynced: 1,
-      });
+      final notifId = const Uuid().v4();
+      transaction
+          .set(_firestore.collection(YStrings.notifications).doc(notifId), {
+            YStrings.colId: notifId,
+            YStrings.colType: type,
+            YStrings.colItemId: itemId,
+            YStrings.colCount: count,
+            YStrings.colWarehouseId: warehouseId,
+            YStrings.colLocationId: locationId,
+            YStrings.colUpdatedAt: DateTime.now().toIso8601String(),
+            YStrings.colSyncedAt: DateTime.now().toIso8601String(),
+          });
     });
   }
 
   @override
   Future<void> saveNotification(NotificationModel notif) async {
-    debugPrint(
-      '[FirebaseClientImpl] Saving notification to Firestore: ${notif.id}',
-    );
-    await _firestore
-        .collection(YStrings.notifications)
-        .doc(notif.id)
-        .set(notif.toMap(), SetOptions(merge: true));
+    final now = DateTime.now().toIso8601String();
+    await _firestore.collection(YStrings.notifications).doc(notif.id).set({
+      ...notif.toMap(),
+      YStrings.colUpdatedAt: now,
+      YStrings.colSyncedAt: now,
+    }, SetOptions(merge: true));
   }
 
   @override
@@ -163,9 +171,6 @@ class FirebaseClientImpl implements FirebaseClient {
         .snapshots();
   }
 
-  // ----------------------
-  // UTILS
-  // ----------------------
   @override
   Future<String> getNameById(String collection, String id) async {
     try {
@@ -173,92 +178,62 @@ class FirebaseClientImpl implements FirebaseClient {
       return doc.exists
           ? (doc.data()?[YStrings.colName] ?? 'Unknown')
           : 'Unknown';
-    } catch (e, st) {
-      debugPrint('[FirebaseClientImpl] getNameById error: $e');
-      debugPrint(st.toString());
+    } catch (_) {
       return 'Unknown';
     }
   }
 
-  // ----------------------
-  // SYNC METADATA
-  // ----------------------
+  // ================= SYNC METADATA =================
   @override
   Future<Map<String, DateTime?>> fetchSyncMetadata() async {
     final Map<String, DateTime?> result = {};
-    try {
-      final snapshot = await _firestore.collection(YStrings.syncMetadata).get();
-      for (final doc in snapshot.docs) {
-        final key = doc.id.isNotEmpty
-            ? doc.id
-            : (doc.data()[YStrings.colEntity] ?? '');
-        final lastUpdatedRaw = doc.data()[YStrings.colLastUpdatedAt];
-        result[key] = _parseDateTime(lastUpdatedRaw);
-      }
-    } catch (e, st) {
-      debugPrint('[FirebaseClientImpl] fetchSyncMetadata error: $e');
-      debugPrint(st.toString());
+    final snapshot = await _firestore.collection(YStrings.syncMetadata).get();
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      result[doc.id] = _parseDateTime(data[YStrings.colLastTableUpdatedAt]);
     }
     return result;
   }
 
   @override
-  Future<List<Map<String, dynamic>>> fetchTableData(String table) async {
-    final List<Map<String, dynamic>> rows = [];
-    debugPrint('[FirebaseClientImpl] Starting fetch for table: $table');
-
-    try {
-      final snapshot = await _firestore.collection(table).get();
-      debugPrint(
-        '[FirebaseClientImpl] Fetched ${snapshot.docs.length} docs from $table',
+  Future<List<Map<String, dynamic>>> fetchTableData(
+    String table, {
+    DateTime? updatedAfter,
+  }) async {
+    Query query = _firestore.collection(table);
+    if (updatedAfter != null) {
+      query = query.where(
+        YStrings.colUpdatedAt,
+        isGreaterThan: updatedAfter.toIso8601String(),
       );
-
-      for (final doc in snapshot.docs) {
-        final data = <String, dynamic>{}..addAll(doc.data());
-        data[YStrings.colId] = doc.id;
-
-        final updatedRaw = data[YStrings.colUpdatedAt];
-        final updatedDt = _parseDateTime(updatedRaw);
-        if (updatedDt != null) {
-          data[YStrings.colUpdatedAt] = updatedDt.toIso8601String();
-          debugPrint(
-            '[FirebaseClientImpl] Parsed updatedAt for ${doc.id}: ${updatedDt.toIso8601String()}',
-          );
-        }
-        rows.add(data);
-      }
-
-      debugPrint('[FirebaseClientImpl] Completed processing for table: $table');
-      debugPrint('[FirebaseClientImpl] Total rows collected: ${rows.length}');
-    } catch (e, st) {
-      debugPrint('[FirebaseClientImpl] fetchTableData($table) error: $e');
-      debugPrint(st.toString());
     }
-    return rows;
+
+    final snapshot = await query.get();
+
+    return snapshot.docs
+        .map<Map<String, dynamic>>(
+          (doc) => {
+            ...doc.data() as Map<String, dynamic>,
+            YStrings.colId: doc.id,
+            YStrings.colUpdatedAt: _parseDateTime(
+              doc[YStrings.colUpdatedAt],
+            )?.toIso8601String(),
+            if (doc[YStrings.colSyncedAt] != null)
+              YStrings.colSyncedAt: _parseDateTime(
+                doc[YStrings.colSyncedAt],
+              )?.toIso8601String(),
+          },
+        )
+        .toList();
   }
 
   @override
-  Future<DateTime?> getTableUpdatedAt(String table) async {
-    try {
-      final docRef = _firestore.collection(YStrings.syncMetadata).doc(table);
-      final docSnap = await docRef.get();
-      if (docSnap.exists) {
-        return _parseDateTime(docSnap.data()?[YStrings.colLastUpdatedAt]);
-      }
-    } catch (e, st) {
-      debugPrint('[FirebaseClientImpl] getTableUpdatedAt($table) error: $e');
-      debugPrint(st.toString());
-    }
-    return null;
-  }
-
-  @override
-  Future<void> updateSyncMetadata(String entity, DateTime lastUpdatedAt) async {
-    debugPrint(
-      '[FirebaseClientImpl] updateSyncMetadata for $entity -> ${lastUpdatedAt.toIso8601String()}',
-    );
+  Future<void> updateSyncMetadata({
+    required String entity,
+    required DateTime lastTableUpdatedAt,
+  }) async {
     await _firestore.collection(YStrings.syncMetadata).doc(entity).set({
-      YStrings.colLastUpdatedAt: lastUpdatedAt.toIso8601String(),
+      YStrings.colLastTableUpdatedAt: lastTableUpdatedAt.toIso8601String(),
     }, SetOptions(merge: true));
   }
 }
