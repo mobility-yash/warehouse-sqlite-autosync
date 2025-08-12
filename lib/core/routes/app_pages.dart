@@ -29,7 +29,6 @@ class AppPages {
       page: () => DashboardView(),
       binding: DashboardBinding(),
     ),
-
     GetPage(
       name: AppRoutes.notificationList,
       page: () => NotificationListView(),

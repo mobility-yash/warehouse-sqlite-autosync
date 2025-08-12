@@ -12,21 +12,22 @@ import 'package:warehouse_data_autosync/core/clients/shared_pref/shared_pref_cli
 
 Future<void> initDependencies() async {
   // Firebase
-  Get.put<FirebaseClient>(FirebaseClientImpl());
+  Get.put<FirebaseClient>(FirebaseClientImpl(), permanent: true);
 
   // Internet
-  Get.lazyPut<InternetConnection>(() => InternetConnection());
-  Get.lazyPut<ConnectivityClient>(
-    () => ConnectivityClientImpl(Get.find<InternetConnection>()),
+  Get.put<InternetConnection>(InternetConnection(), permanent: true);
+  Get.put<ConnectivityClient>(
+    ConnectivityClientImpl(Get.find<InternetConnection>()),
+    permanent: true,
   );
 
   // SharedPreferences
   final sharedPrefs = await SharedPreferences.getInstance();
-  Get.put<SharedPreferences>(sharedPrefs);
+  Get.put<SharedPreferences>(sharedPrefs, permanent: true);
 
   final sharedPrefClient = SharedPreferencesClientImpl(sharedPrefs);
-  Get.put<SharedPreferencesClient>(sharedPrefClient);
+  Get.put<SharedPreferencesClient>(sharedPrefClient, permanent: true);
 
   // SQLite
-  Get.put<DatabaseClient>(DatabaseClientImpl());
+  Get.put<DatabaseClient>(DatabaseClientImpl(), permanent: true);
 }

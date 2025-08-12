@@ -62,10 +62,13 @@ class NotificationListBinding extends Bindings {
   void dependencies() {
     final dbClient = Get.find<DatabaseClient>();
     final firebasePrefs = Get.find<FirebaseClient>();
+    final connectivityClient = Get.find<ConnectivityClient>();
+
     Get.put(
       NotificationListController(
         dbClient: dbClient,
         firebaseClient: firebasePrefs,
+        connectivityClient: connectivityClient,
       ),
     );
   }

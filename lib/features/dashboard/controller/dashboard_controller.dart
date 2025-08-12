@@ -9,6 +9,7 @@ import 'package:warehouse_data_autosync/core/clients/internet/connectivity_clien
 import 'package:warehouse_data_autosync/core/common/models/item_model.dart';
 import 'package:warehouse_data_autosync/core/common/models/notification_model.dart';
 import 'package:warehouse_data_autosync/core/constants/constants.dart';
+import 'package:warehouse_data_autosync/core/routes/app_routes.dart';
 
 class DashboardController extends GetxController {
   final DatabaseClient dbClient;
@@ -49,42 +50,44 @@ class DashboardController extends GetxController {
   }
 
   Future<void> fetchLocations() async {
-    debugPrint("[fetchLocations] Fetching locations from DB...");
+    debugPrint("[DashboardController] Fetching locations from DB...");
     final locModels = await dbClient.getLocations();
-    debugPrint("[fetchLocations] Found ${locModels.length} locations");
+    debugPrint("[DashboardController] Found ${locModels.length} locations");
     locModels.sort((a, b) => a.name.compareTo(b.name));
     locations.value = locModels
         .map((l) => {YStrings.colId: l.id, YStrings.colName: l.name})
         .toList();
-    debugPrint("[fetchLocations] Locations loaded: $locations");
+    debugPrint("[DashboardController] Locations loaded: $locations");
   }
 
   Future<void> fetchWarehouses(String locationId) async {
-    debugPrint("[fetchWarehouses] Fetching for locationId: $locationId");
+    debugPrint(
+      "[DashboardController] Fetching warehouses for locationId: $locationId",
+    );
     final whModels = await dbClient.getWarehousesByLocationId(locationId);
-    debugPrint("[fetchWarehouses] Found ${whModels.length} warehouses");
+    debugPrint("[DashboardController] Found ${whModels.length} warehouses");
     whModels.sort((a, b) => a.name.compareTo(b.name));
     warehouses.value = whModels
         .map((w) => {YStrings.colId: w.id, YStrings.colName: w.name})
         .toList();
 
-    // Reset state
     selectedWarehouseId.value = null;
     items.clear();
     selectedItemId.value = null;
     selectedItem.value = null;
-    debugPrint("[fetchWarehouses] Warehouses loaded: $warehouses");
   }
 
   Future<void> fetchItems(String warehouseId) async {
-    debugPrint("[fetchItems] Fetching items for warehouseId: $warehouseId");
+    debugPrint(
+      "[DashboardController] Fetching items for warehouseId: $warehouseId",
+    );
     isLoadingItems.value = true;
     items.clear();
     selectedItem.value = null;
     selectedItemId.value = null;
 
     final itemModels = await dbClient.getItemsByWarehouseId(warehouseId);
-    debugPrint("[fetchItems] Found ${itemModels.length} items");
+    debugPrint("[DashboardController] Found ${itemModels.length} items");
     itemModels.sort((a, b) => a.name.compareTo(b.name));
     items.value = itemModels
         .map(
@@ -95,16 +98,15 @@ class DashboardController extends GetxController {
           },
         )
         .toList();
-    debugPrint("[fetchItems] Items loaded: $items");
     isLoadingItems.value = false;
   }
 
+  /// This is the unified submit method: sync old unsynced -> submit current -> update metadata
   Future<void> submitNotification() async {
     final selectedId = selectedItemId.value;
-    debugPrint("[submitNotification] Triggered for itemId: $selectedId");
+    final now = DateTime.now();
 
     if (selectedId != null && lastUnsyncedItemIds.contains(selectedId)) {
-      debugPrint("[submitNotification] BLOCKED: Previous unsynced op exists");
       _showToast(
         "Last operation for this item is still pending sync. Please sync before proceeding.",
         isError: true,
@@ -115,7 +117,6 @@ class DashboardController extends GetxController {
     if (selectedId == null ||
         selectedWarehouseId.value == null ||
         selectedLocationId.value == null) {
-      debugPrint("[submitNotification] BLOCKED: Missing fields");
       _showToast('Please select all fields.', isError: true);
       return;
     }
@@ -123,123 +124,151 @@ class DashboardController extends GetxController {
     isSubmitting.value = true;
 
     try {
-      debugPrint("[submitNotification] Fetching current item from DB");
-      final allItems = await dbClient.getItemsByWarehouseId(
-        selectedWarehouseId.value!,
-      );
-      final item = allItems.firstWhere((i) => i.id == selectedId);
-
-      debugPrint(
-        "[submitNotification] Current item: ${item.name}, qty=${item.quantity}",
-      );
-
-      int currentQty = item.quantity;
-      int newQty = currentQty;
-
-      if (isOutgoing) {
-        if (count.value > currentQty) {
-          debugPrint("[submitNotification] ERROR: Not enough stock");
-          throw Exception(YStrings.errNotEnoughStock);
-        }
-        newQty -= count.value;
-      } else {
-        newQty += count.value;
-      }
-      debugPrint("[submitNotification] New quantity after op: $newQty");
-
-      final now = DateTime.now();
-      final updatedAt = now.toIso8601String();
-
-      final updatedItem = item.copyWith(
-        quantity: newQty,
-        updatedAt: updatedAt,
-        synced: false,
-      );
-
-      final newNotification = NotificationModel(
-        id: const Uuid().v4(),
-        type: notificationType.value,
-        itemId: selectedId,
-        count: count.value,
-        warehouseId: selectedWarehouseId.value!,
-        locationId: selectedLocationId.value!,
-        updatedAt: updatedAt,
-        synced: false,
-      );
-
-      debugPrint("[submitNotification] Checking network...");
       final hasNetwork = await connectivityClient.getSmartStatus();
-      debugPrint("[submitNotification] Network available? $hasNetwork");
+      debugPrint("[DashboardController] Network available? $hasNetwork");
 
       if (hasNetwork) {
-        try {
-          debugPrint("[submitNotification] Sending to Firebase...");
-          await firebaseClient.submitNotification(
-            type: notificationType.value,
-            itemId: selectedId,
-            count: count.value,
-            warehouseId: selectedWarehouseId.value!,
-            locationId: selectedLocationId.value!,
-          );
-
-          debugPrint(
-            "[submitNotification] Firebase sync success → Saving locally as synced",
-          );
-          await dbClient.insertItems([updatedItem.copyWith(synced: true)]);
-          await dbClient.insertNotifications([
-            newNotification.copyWith(synced: true),
-          ]);
-
-          lastUnsyncedItemIds.remove(selectedId);
-
-          _showToast(
-            "Notification submitted & synced with server for item '${item.name}'",
-          );
-        } catch (firebaseError) {
-          debugPrint(
-            "[submitNotification] Firebase sync FAILED: $firebaseError",
-          );
-          debugPrint("[submitNotification] Saving locally as unsynced");
-          await dbClient.insertItems([updatedItem]);
-          await dbClient.insertNotifications([newNotification]);
-          lastUnsyncedItemIds.add(selectedId);
-
-          _showToast(
-            "Saved locally but failed to sync: ${firebaseError.toString()}",
-            isError: true,
-          );
+        // 1️⃣ Push old unsynced items
+        final oldItems = await dbClient.getUnsyncedItems();
+        for (final item in oldItems) {
+          try {
+            await firebaseClient.saveItem(item);
+            await dbClient.markItemsAsSynced([item.id]);
+            debugPrint("[DashboardController] Old item synced: ${item.id}");
+          } catch (e) {
+            _showToast(
+              "Error syncing old item: ${e.toString()}",
+              isError: true,
+            );
+            return;
+          }
         }
+
+        // 2️⃣ Push old unsynced notifications
+        final oldNotifs = await dbClient.getUnsyncedNotifications();
+        for (final notif in oldNotifs) {
+          try {
+            await firebaseClient.saveNotification(notif);
+            await dbClient.markNotificationsAsSynced([notif.id]);
+            debugPrint(
+              "[DashboardController] Old notification synced: ${notif.id}",
+            );
+          } catch (e) {
+            _showToast(
+              "Error syncing old notification: ${e.toString()}",
+              isError: true,
+            );
+            return;
+          }
+        }
+
+        // 3️⃣ Submit the current notification
+        await _submitCurrentNotification(syncToFirebase: true);
+
+        // 4️⃣ Update metadata on both remote/server and locally
+        try {
+          await firebaseClient.updateSyncMetadata(YStrings.items, now);
+          await firebaseClient.updateSyncMetadata(YStrings.notifications, now);
+        } catch (e) {
+          debugPrint("[DashboardController] Remote metadata update failed: $e");
+        }
+        await dbClient.updateSyncMetadata(YStrings.items, now);
+        await dbClient.updateSyncMetadata(YStrings.notifications, now);
+        debugPrint("[DashboardController] Metadata updated");
       } else {
-        debugPrint("[submitNotification] Offline → Saving locally as unsynced");
-        await dbClient.insertItems([updatedItem]);
-        await dbClient.insertNotifications([newNotification]);
-        lastUnsyncedItemIds.add(selectedId);
-
-        _showToast(
-          "No internet. Saved locally. Will sync later.",
-          isError: true,
+        debugPrint(
+          "[DashboardController] Offline mode -> Save directly locally",
         );
+        await _submitCurrentNotification(syncToFirebase: false);
+        await dbClient.updateSyncMetadata(YStrings.items, now);
+        await dbClient.updateSyncMetadata(YStrings.notifications, now);
       }
-
-      debugPrint("[submitNotification] Updating sync_metadata timestamps");
-      await Future.wait([
-        dbClient.updateSyncMetadata(YStrings.items, now),
-        dbClient.updateSyncMetadata(YStrings.notifications, now),
-      ]);
-
-      await refreshSelectedItem(selectedId);
-      count.value = 1;
-      debugPrint("[submitNotification] Completed for itemId: $selectedId");
-    } catch (e) {
-      debugPrint("[submitNotification] ERROR: $e");
-      _showToast("Error: ${e.toString()}", isError: true);
     } finally {
       isSubmitting.value = false;
+      debugPrint("[DashboardController] submitNotification complete");
     }
   }
 
+  Future<void> _submitCurrentNotification({
+    required bool syncToFirebase,
+  }) async {
+    final selectedId = selectedItemId.value!;
+    final allItems = await dbClient.getItemsByWarehouseId(
+      selectedWarehouseId.value!,
+    );
+    final item = allItems.firstWhere((i) => i.id == selectedId);
+
+    int currentQty = item.quantity;
+    int newQty = currentQty;
+
+    if (isOutgoing) {
+      if (count.value > currentQty) {
+        throw Exception(YStrings.errNotEnoughStock);
+      }
+      newQty -= count.value;
+    } else {
+      newQty += count.value;
+    }
+
+    final now = DateTime.now();
+    final updatedAt = now.toIso8601String();
+
+    final updatedItem = item.copyWith(
+      quantity: newQty,
+      updatedAt: updatedAt,
+      synced: syncToFirebase,
+    );
+
+    final newNotification = NotificationModel(
+      id: const Uuid().v4(),
+      type: notificationType.value,
+      itemId: selectedId,
+      count: count.value,
+      warehouseId: selectedWarehouseId.value!,
+      locationId: selectedLocationId.value!,
+      updatedAt: updatedAt,
+      synced: syncToFirebase,
+    );
+
+    if (syncToFirebase) {
+      try {
+        await firebaseClient.submitNotification(
+          type: notificationType.value,
+          itemId: selectedId,
+          count: count.value,
+          warehouseId: selectedWarehouseId.value!,
+          locationId: selectedLocationId.value!,
+        );
+
+        await dbClient.insertItems([updatedItem]);
+        await dbClient.insertNotifications([newNotification]);
+        lastUnsyncedItemIds.remove(selectedId);
+        _showToast("Notification submitted & synced");
+      } catch (e) {
+        await dbClient.insertItems([updatedItem.copyWith(synced: false)]);
+        await dbClient.insertNotifications([
+          newNotification.copyWith(synced: false),
+        ]);
+        lastUnsyncedItemIds.add(selectedId);
+        _showToast(
+          "Saved locally but failed to sync: ${e.toString()}",
+          isError: true,
+        );
+      }
+    } else {
+      await dbClient.insertItems([updatedItem.copyWith(synced: false)]);
+      await dbClient.insertNotifications([
+        newNotification.copyWith(synced: false),
+      ]);
+      lastUnsyncedItemIds.add(selectedId);
+      _showToast("Saved locally, will sync later", isError: true);
+    }
+
+    await refreshSelectedItem(selectedId);
+    count.value = 1;
+  }
+
   Future<void> refreshSelectedItem(String itemId) async {
-    debugPrint("[refreshSelectedItem] Refreshing from DB: $itemId");
     final allItems = await dbClient.getItemsByWarehouseId(
       selectedWarehouseId.value!,
     );
@@ -247,17 +276,15 @@ class DashboardController extends GetxController {
       (i) => i.id == itemId,
       orElse: () => ItemModel.empty(),
     );
-
     selectedItem.value = {
       YStrings.colId: updatedItem.id,
       YStrings.colName: updatedItem.name,
       YStrings.colQuantity: updatedItem.quantity,
     };
-    debugPrint("[refreshSelectedItem] Got: $selectedItem");
   }
 
   void _showToast(String message, {bool isError = false}) {
-    debugPrint("[Toast] ${isError ? 'ERROR' : 'INFO'}: $message");
+    debugPrint("[DashboardController] ${isError ? 'ERROR' : 'INFO'}: $message");
     Fluttertoast.showToast(
       msg: message,
       toastLength: Toast.LENGTH_LONG,
@@ -266,5 +293,10 @@ class DashboardController extends GetxController {
       textColor: Colors.white,
       fontSize: 14.0,
     );
+  }
+
+  void continueToNotificationList() {
+    debugPrint('[DashboardController] Navigating to NotificationList');
+    Get.toNamed(AppRoutes.notificationList);
   }
 }

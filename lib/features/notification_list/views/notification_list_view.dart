@@ -5,42 +5,59 @@ import 'package:intl/intl.dart';
 import '../controller/notification_list_controller.dart';
 
 class NotificationListView extends StatelessWidget {
-  const NotificationListView({super.key});
+  NotificationListView({super.key});
+  final NotificationListController controller = Get.find();
 
   @override
   Widget build(BuildContext context) {
-    final controller = Get.find<NotificationListController>();
-    debugPrint("[NotificationListView] Building UI");
+    debugPrint("[NotificationListController] Building UI");
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Notifications'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.sync),
-            tooltip: 'Sync Unsynced Data',
-            onPressed: controller.isSyncing.value
-                ? null // Disable button while syncing
-                : () async {
-                    debugPrint('[NotificationListView] Sync button pressed');
-                    await controller.syncUnsyncedData();
-                  },
-          ),
+          Obx(() {
+            if (controller.isSyncing.value) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Center(
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              );
+            }
+            return IconButton(
+              icon: const Icon(Icons.sync),
+              tooltip: 'Sync Unsynced Data',
+              onPressed: () async {
+                debugPrint('[NotificationListController] Sync button pressed');
+                await controller.syncUnsyncedData();
+              },
+            );
+          }),
         ],
       ),
       body: Obx(() {
         debugPrint(
-          "[NotificationListView] Notifications count: ${controller.notifications.length}",
+          "[NotificationListController] Notifications count: ${controller.notifications.length}",
         );
 
         if (controller.notifications.isEmpty) {
-          debugPrint("[NotificationListView] No notifications found");
+          debugPrint("[NotificationListController] No notifications found");
           return const Center(child: Text("No notifications found"));
         }
 
         return RefreshIndicator(
           onRefresh: () async {
-            debugPrint("[NotificationListView] Pull-to-refresh triggered");
+            debugPrint(
+              "[NotificationListController] Pull-to-refresh triggered",
+            );
             await controller.fetchNotifications();
           },
           child: ListView.builder(
@@ -49,7 +66,7 @@ class NotificationListView extends StatelessWidget {
             itemBuilder: (context, index) {
               final notif = controller.notifications[index];
               debugPrint(
-                "[NotificationListView] Rendering notification index $index -> ${notif.id}",
+                "[NotificationListController] Rendering notification index $index -> ${notif.id}",
               );
 
               final synced = notif.synced;

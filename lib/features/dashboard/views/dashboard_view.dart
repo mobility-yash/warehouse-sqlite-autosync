@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:warehouse_data_autosync/core/constants/constants.dart';
-import 'package:warehouse_data_autosync/core/routes/app_routes.dart';
 
 import '../controller/dashboard_controller.dart';
 import 'widget/custom_dropdown_field.dart';
@@ -19,7 +18,7 @@ class DashboardView extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.list),
             tooltip: 'View Notifications',
-            onPressed: () => Get.toNamed(AppRoutes.notificationList),
+            onPressed: () => controller.continueToNotificationList(),
           ),
         ],
       ),
@@ -35,7 +34,7 @@ class DashboardView extends StatelessWidget {
                 final qty = controller.count.value;
                 final isOutgoing = controller.isOutgoing;
                 final currentQty = selectedItem?[YStrings.colQuantity] ?? 0;
-                Widget infoTextWidget = Text('');
+                Widget infoTextWidget = const SizedBox();
 
                 if (selectedLocation != null &&
                     selectedWarehouse != null &&
@@ -73,14 +72,13 @@ class DashboardView extends StatelessWidget {
                           text: '$warehouseName, $locationName',
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
-                        const TextSpan(text: '. '),
-                        const TextSpan(text: 'Here Current stock is '),
+                        const TextSpan(text: '. Current stock is '),
                         TextSpan(
                           text: '$currentQty',
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                         const TextSpan(
-                          text: ' and after transaction new stock will be ',
+                          text: ' and after transaction it will be ',
                         ),
                         TextSpan(
                           text: '$remainingQty',
@@ -93,7 +91,6 @@ class DashboardView extends StatelessWidget {
                 }
 
                 return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     CustomDropdownField(
                       hint: 'Select Location',
@@ -102,7 +99,9 @@ class DashboardView extends StatelessWidget {
                       isLoading: false,
                       onChanged: (value) {
                         controller.selectedLocationId.value = value;
-                        if (value != null) controller.fetchWarehouses(value);
+                        if (value != null) {
+                          controller.fetchWarehouses(value);
+                        }
                       },
                     ),
                     const SizedBox(height: 16),
@@ -128,7 +127,6 @@ class DashboardView extends StatelessWidget {
                         );
                         controller.selectedItemId.value = value;
                         controller.selectedItem.value = item;
-
                         if (controller.isOutgoing &&
                             controller.count.value >
                                 item[YStrings.colQuantity]) {
@@ -144,16 +142,8 @@ class DashboardView extends StatelessWidget {
                             title: const Text('Incoming'),
                             value: YStrings.transactionIncoming,
                             groupValue: controller.notificationType.value,
-                            onChanged: (val) {
-                              controller.notificationType.value = val!;
-                              if (controller.isOutgoing &&
-                                  selectedItem != null &&
-                                  controller.count.value >
-                                      selectedItem[YStrings.colQuantity]) {
-                                controller.count.value =
-                                    selectedItem[YStrings.colQuantity];
-                              }
-                            },
+                            onChanged: (val) =>
+                                controller.notificationType.value = val!,
                           ),
                         ),
                         Expanded(
@@ -161,16 +151,8 @@ class DashboardView extends StatelessWidget {
                             title: const Text('Outgoing'),
                             value: YStrings.transactionOutgoing,
                             groupValue: controller.notificationType.value,
-                            onChanged: (val) {
-                              controller.notificationType.value = val!;
-                              if (controller.isOutgoing &&
-                                  selectedItem != null &&
-                                  controller.count.value >
-                                      selectedItem[YStrings.colQuantity]) {
-                                controller.count.value =
-                                    selectedItem[YStrings.colQuantity];
-                              }
-                            },
+                            onChanged: (val) =>
+                                controller.notificationType.value = val!,
                           ),
                         ),
                       ],
@@ -217,19 +199,16 @@ class DashboardView extends StatelessWidget {
           ),
           Obx(
             () => Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.all(16),
               child: SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed:
                       (controller.selectedItem.value == null ||
-                          controller.isSubmitting.value ||
-                          controller.isLoadingItems.value)
+                          controller.isSubmitting.value)
                       ? null
-                      : controller.submitNotification,
-                  child:
-                      (controller.isSubmitting.value ||
-                          controller.isLoadingItems.value)
+                      : controller.submitNotification, // unified method
+                  child: controller.isSubmitting.value
                       ? const SizedBox(
                           width: 18,
                           height: 18,
