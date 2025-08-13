@@ -57,4 +57,9 @@ class LocationModel {
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
+
+  @override
+  String toString() {
+    return 'LocationModel(id: $id, name: $name, address: $address, updatedAt: $updatedAt)';
+  }
 }

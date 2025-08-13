@@ -100,4 +100,11 @@ class NotificationModel {
 
   /// Quick check if this notification is already synced
   bool get isSynced => syncedAt != null;
+
+  @override
+  String toString() {
+    return 'NotificationModel(id: $id, type: $type, itemId: $itemId, '
+        'count: $count, warehouseId: $warehouseId, locationId: $locationId, '
+        'updatedAt: $updatedAt, syncedAt: $syncedAt)';
+  }
 }

@@ -2,9 +2,9 @@ import 'package:get/get.dart';
 import 'package:warehouse_data_autosync/core/routes/app_bindings.dart';
 import 'package:warehouse_data_autosync/features/dashboard/views/dashboard_view.dart';
 import 'package:warehouse_data_autosync/features/notification_list/views/notification_list_view.dart';
-import 'package:warehouse_data_autosync/features/splash/view/splash_view.dart';
 import 'package:warehouse_data_autosync/features/sync/view/sync_view.dart';
 
+import '../../features/splash/view/splash_view.dart';
 import 'app_routes.dart';
 
 class AppPages {
@@ -12,7 +12,6 @@ class AppPages {
     // GetPage(
     //   name: AppRoutes.dummyDataUploader,
     //   page: () => DummyDataUploaderView(),
-    //   binding: DashboardBinding(),
     // ),
     GetPage(
       name: AppRoutes.splash,

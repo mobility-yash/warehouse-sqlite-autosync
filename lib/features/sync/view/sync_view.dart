@@ -19,85 +19,88 @@ class SyncView extends GetView<SyncController> {
             controller.isLoading.value ||
             controller.tableSyncing.containsValue(true);
 
-        return Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            children: [
-              if (isAnyTableSyncing)
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.orange.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.warning_amber_rounded,
-                        color: Colors.orange,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Please keep the app open while syncing to avoid interruptions.',
-                          style: TextStyle(
-                            color: Colors.orange.shade800,
-                            fontWeight: FontWeight.w600,
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              children: [
+                if (isAnyTableSyncing)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.warning_amber_rounded,
+                          color: Colors.orange,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Please keep the app open while syncing to avoid interruptions.',
+                            style: TextStyle(
+                              color: Colors.orange.shade800,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
+                      ],
+                    ),
+                  ),
+
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: allTables.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final table = allTables[index];
+                      return _buildSyncCard(table);
+                    },
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                if (!isAnyTableSyncing &&
+                    controller.tableSynced.values.contains(false))
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Resync All Failed'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
-                    ],
-                  ),
-                ),
-
-              Expanded(
-                child: ListView.separated(
-                  itemCount: allTables.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (context, index) {
-                    final table = allTables[index];
-                    return _buildSyncCard(table);
-                  },
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              if (!isAnyTableSyncing &&
-                  controller.tableSynced.values.contains(false))
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Resync All Failed'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      onPressed: controller.resyncFailedTables,
                     ),
-                    onPressed: controller.resyncFailedTables,
                   ),
-                ),
 
-              if (allSynced && !isAnyTableSyncing) ...[
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.check_circle, color: Colors.white),
-                    label: const Text('Continue to Dashboard'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
+                if (allSynced && !isAnyTableSyncing) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.check_circle, color: Colors.white),
+                      label: const Text('Continue to Dashboard'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      onPressed: controller.continueToDashboard,
                     ),
-                    onPressed: controller.continueToDashboard,
                   ),
-                ),
+                ],
               ],
-            ],
+            ),
           ),
         );
       }),

@@ -38,25 +38,33 @@ class DashboardController extends GetxController {
   var isSubmitting = false.obs;
   var isLoadingItems = false.obs;
 
-  final Set<String> lastUnsyncedItemIds = {};
-
   bool get isOutgoing => notificationType.value == YStrings.transactionOutgoing;
 
   @override
   void onInit() {
+    debugPrint("Yash [DashboardController] [onInit] - Controller initialized");
     super.onInit();
     fetchLocations();
   }
 
   Future<void> fetchLocations() async {
+    debugPrint(
+      "Yash [DashboardController] [fetchLocations] - Fetching locations",
+    );
     final locModels = await dbClient.getLocations();
     locModels.sort((a, b) => a.name.compareTo(b.name));
     locations.value = locModels
         .map((l) => {YStrings.colId: l.id, YStrings.colName: l.name})
         .toList();
+    debugPrint(
+      "Yash [DashboardController] [fetchLocations] - Found ${locations.length} locations",
+    );
   }
 
   Future<void> fetchWarehouses(String locationId) async {
+    debugPrint(
+      "Yash [DashboardController] [fetchWarehouses] - Location ID: $locationId",
+    );
     final whModels = await dbClient.getWarehousesByLocationId(locationId);
     whModels.sort((a, b) => a.name.compareTo(b.name));
     warehouses.value = whModels
@@ -67,9 +75,15 @@ class DashboardController extends GetxController {
     items.clear();
     selectedItemId.value = null;
     selectedItem.value = null;
+    debugPrint(
+      "Yash [DashboardController] [fetchWarehouses] - Found ${warehouses.length} warehouses",
+    );
   }
 
   Future<void> fetchItems(String warehouseId) async {
+    debugPrint(
+      "Yash [DashboardController] [fetchItems] - Warehouse ID: $warehouseId",
+    );
     isLoadingItems.value = true;
     items.clear();
     selectedItem.value = null;
@@ -87,22 +101,47 @@ class DashboardController extends GetxController {
         )
         .toList();
     isLoadingItems.value = false;
+    debugPrint(
+      "Yash [DashboardController] [fetchItems] - Found ${items.length} items",
+    );
   }
 
   Future<void> submitNotification() async {
     final selectedId = selectedItemId.value;
     final now = DateTime.now();
+    debugPrint(
+      "Yash [DashboardController] [submitNotification] - Starting submission, selectedId: $selectedId",
+    );
 
-    if (selectedId != null && lastUnsyncedItemIds.contains(selectedId)) {
-      _showToast(
-        "Last operation for this item is still pending sync. Please sync before proceeding.",
-        isError: true,
+    // 1️⃣ Block if selected item already has syncedAt=null
+    if (selectedId != null) {
+      final items = await dbClient.getItemsByWarehouseId(
+        selectedWarehouseId.value!,
       );
-      return;
+      final selectedItem = items.firstWhere(
+        (i) => i.id == selectedId,
+        orElse: () => ItemModel.empty(),
+      );
+
+      if (selectedItem.syncedAt == null) {
+        debugPrint(
+          "Yash [DashboardController] [submitNotification] - Item $selectedId pending sync (syncedAt=null) → blocking",
+        );
+        _showToast(
+          "Last operation for this item is still pending sync. Please sync before proceeding.",
+          isError: true,
+        );
+        return;
+      }
     }
+
+    // 2️⃣ Validate required selections
     if (selectedId == null ||
         selectedWarehouseId.value == null ||
         selectedLocationId.value == null) {
+      debugPrint(
+        "Yash [DashboardController] [submitNotification] - Missing selections",
+      );
       _showToast('Please select all fields.', isError: true);
       return;
     }
@@ -110,21 +149,32 @@ class DashboardController extends GetxController {
     isSubmitting.value = true;
     try {
       final hasNetwork = await connectivityClient.getSmartStatus();
+      debugPrint(
+        "Yash [DashboardController] [submitNotification] - Has network: $hasNetwork",
+      );
 
       if (hasNetwork) {
+        // 3️⃣ Push all previously unsynced DB rows to Firebase
+        debugPrint(
+          "Yash [DashboardController] [submitNotification] - Syncing old unsynced records",
+        );
+
         final oldItems = await dbClient.getUnsyncedItems();
         for (final item in oldItems) {
           await firebaseClient.saveItem(item);
           await dbClient.markItemsAsSynced([item.id]);
         }
+
         final oldNotifs = await dbClient.getUnsyncedNotifications();
         for (final notif in oldNotifs) {
           await firebaseClient.saveNotification(notif);
           await dbClient.markNotificationsAsSynced([notif.id]);
         }
 
+        // 4️⃣ Submit the new notification online
         await _submitCurrentNotification(syncToFirebase: true);
 
+        // 5️⃣ Update sync metadata
         await firebaseClient.updateSyncMetadata(
           entity: YStrings.items,
           lastTableUpdatedAt: now,
@@ -143,6 +193,10 @@ class DashboardController extends GetxController {
           updatedAt: now.toIso8601String(),
         );
       } else {
+        // 6️⃣ Offline save — syncedAt=null
+        debugPrint(
+          "Yash [DashboardController] [submitNotification] - No network — saving offline",
+        );
         await _submitCurrentNotification(syncToFirebase: false);
 
         await dbClient.updateLastLocalUpdatedAt(
@@ -155,15 +209,21 @@ class DashboardController extends GetxController {
         );
       }
     } catch (e) {
+      debugPrint("Yash [DashboardController] [submitNotification] - ERROR: $e");
       _showToast("Error: ${e.toString()}", isError: true);
     } finally {
       isSubmitting.value = false;
+      debugPrint("Yash [DashboardController] [submitNotification] - Complete");
     }
   }
 
   Future<void> _submitCurrentNotification({
     required bool syncToFirebase,
   }) async {
+    debugPrint(
+      "Yash [DashboardController] [_submitCurrentNotification] - syncToFirebase: $syncToFirebase",
+    );
+
     final selectedId = selectedItemId.value!;
     final allItems = await dbClient.getItemsByWarehouseId(
       selectedWarehouseId.value!,
@@ -173,6 +233,10 @@ class DashboardController extends GetxController {
     int newQty = isOutgoing
         ? currentQty - count.value
         : currentQty + count.value;
+
+    debugPrint(
+      "Yash [DashboardController] [_submitCurrentNotification] - currentQty: $currentQty, newQty: $newQty",
+    );
 
     if (isOutgoing && newQty < 0) {
       throw Exception(YStrings.errNotEnoughStock);
@@ -207,20 +271,23 @@ class DashboardController extends GetxController {
         );
         await dbClient.insertItems([updatedItem]);
         await dbClient.insertNotifications([newNotification]);
-        lastUnsyncedItemIds.remove(selectedId);
         _showToast("Notification submitted & synced");
       } else {
-        await dbClient.insertItems([updatedItem]);
-        await dbClient.insertNotifications([newNotification]);
-        lastUnsyncedItemIds.add(selectedId);
-        _showToast("Saved locally, will sync later", isError: true);
+        // Offline → force syncedAt=null
+        await dbClient.insertItems([updatedItem.copyWith(syncedAt: null)]);
+        await dbClient.insertNotifications([
+          newNotification.copyWith(syncedAt: null),
+        ]);
+        _showToast(
+          "No internet. Saved locally, will sync later.",
+          isError: true,
+        );
       }
     } catch (e) {
       await dbClient.insertItems([updatedItem.copyWith(syncedAt: null)]);
       await dbClient.insertNotifications([
         newNotification.copyWith(syncedAt: null),
       ]);
-      lastUnsyncedItemIds.add(selectedId);
       _showToast(
         "Saved locally but failed to sync: ${e.toString()}",
         isError: true,
@@ -232,6 +299,9 @@ class DashboardController extends GetxController {
   }
 
   Future<void> refreshSelectedItem(String itemId) async {
+    debugPrint(
+      "Yash [DashboardController] [refreshSelectedItem] - itemId: $itemId",
+    );
     final allItems = await dbClient.getItemsByWarehouseId(
       selectedWarehouseId.value!,
     );
@@ -244,9 +314,15 @@ class DashboardController extends GetxController {
       YStrings.colName: updatedItem.name,
       YStrings.colQuantity: updatedItem.quantity,
     };
+    debugPrint(
+      "Yash [DashboardController] [refreshSelectedItem] - Updated item: ${updatedItem.id}",
+    );
   }
 
   void _showToast(String message, {bool isError = false}) {
+    debugPrint(
+      "Yash [DashboardController] [_showToast] - ${isError ? 'ERROR' : 'INFO'}: $message",
+    );
     Fluttertoast.showToast(
       msg: message,
       toastLength: Toast.LENGTH_LONG,
@@ -258,6 +334,9 @@ class DashboardController extends GetxController {
   }
 
   void continueToNotificationList() {
+    debugPrint(
+      "Yash [DashboardController] [continueToNotificationList] - Navigating to notification list",
+    );
     Get.toNamed(AppRoutes.notificationList);
   }
 }

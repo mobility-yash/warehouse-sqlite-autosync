@@ -76,4 +76,11 @@ class SyncMetadataModel {
             ) ??
             false
       : false;
+
+  @override
+  String toString() {
+    return 'SyncMetadataModel(entity: $entity, '
+        'lastLocalUpdatedAt: $lastLocalUpdatedAt, '
+        'lastRemoteUpdatedAt: $lastRemoteUpdatedAt)';
+  }
 }

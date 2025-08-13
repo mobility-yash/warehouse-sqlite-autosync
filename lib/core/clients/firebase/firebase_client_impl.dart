@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import 'package:warehouse_data_autosync/core/common/models/item_model.dart';
 import 'package:warehouse_data_autosync/core/common/models/notification_model.dart';
@@ -18,7 +19,11 @@ class FirebaseClientImpl implements FirebaseClient {
       if (value is String) return DateTime.tryParse(value);
       if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
       if (value is DateTime) return value;
-    } catch (_) {}
+    } catch (e) {
+      debugPrint(
+        "Yash [FirebaseClientImpl] [_parseDateTime] - Error parsing date: $e, value: $value",
+      );
+    }
     return null;
   }
 
@@ -27,6 +32,9 @@ class FirebaseClientImpl implements FirebaseClient {
   Future<List<DocumentSnapshot>> fetchLocations({
     DateTime? updatedAfter,
   }) async {
+    debugPrint(
+      "Yash [FirebaseClientImpl] [fetchLocations] - Fetching locations, updatedAfter: $updatedAfter",
+    );
     Query query = _firestore.collection(YStrings.locations);
     if (updatedAfter != null) {
       query = query.where(
@@ -40,6 +48,9 @@ class FirebaseClientImpl implements FirebaseClient {
         (a, b) =>
             (a[YStrings.colName] ?? '').compareTo(b[YStrings.colName] ?? ''),
       );
+    debugPrint(
+      "Yash [FirebaseClientImpl] [fetchLocations] - Retrieved ${docs.length} documents",
+    );
     return docs;
   }
 
@@ -49,6 +60,9 @@ class FirebaseClientImpl implements FirebaseClient {
     String locationId, {
     DateTime? updatedAfter,
   }) async {
+    debugPrint(
+      "Yash [FirebaseClientImpl] [fetchWarehouses] - Fetching warehouses for locationId: $locationId, updatedAfter: $updatedAfter",
+    );
     Query query = _firestore
         .collection(YStrings.warehouses)
         .where(YStrings.colLocationId, isEqualTo: locationId);
@@ -64,6 +78,9 @@ class FirebaseClientImpl implements FirebaseClient {
         (a, b) =>
             (a[YStrings.colName] ?? '').compareTo(b[YStrings.colName] ?? ''),
       );
+    debugPrint(
+      "Yash [FirebaseClientImpl] [fetchWarehouses] - Retrieved ${docs.length} documents",
+    );
     return docs;
   }
 
@@ -73,6 +90,9 @@ class FirebaseClientImpl implements FirebaseClient {
     String warehouseId, {
     DateTime? updatedAfter,
   }) async {
+    debugPrint(
+      "Yash [FirebaseClientImpl] [fetchItems] - Fetching items for warehouseId: $warehouseId, updatedAfter: $updatedAfter",
+    );
     Query query = _firestore
         .collection(YStrings.items)
         .where(YStrings.colWarehouseId, isEqualTo: warehouseId);
@@ -88,23 +108,36 @@ class FirebaseClientImpl implements FirebaseClient {
         (a, b) =>
             (a[YStrings.colName] ?? '').compareTo(b[YStrings.colName] ?? ''),
       );
+    debugPrint(
+      "Yash [FirebaseClientImpl] [fetchItems] - Retrieved ${docs.length} documents",
+    );
     return docs;
   }
 
   @override
   Future<DocumentSnapshot?> getItemById(String itemId) async {
+    debugPrint(
+      "Yash [FirebaseClientImpl] [getItemById] - Fetching item by id: $itemId",
+    );
     final doc = await _firestore.collection(YStrings.items).doc(itemId).get();
+    debugPrint(
+      "Yash [FirebaseClientImpl] [getItemById] - Exists: ${doc.exists}",
+    );
     return doc.exists ? doc : null;
   }
 
   @override
   Future<void> saveItem(ItemModel item) async {
+    debugPrint(
+      "Yash [FirebaseClientImpl] [saveItem] - Saving item: ${item.id}",
+    );
     final now = DateTime.now().toIso8601String();
     await _firestore.collection(YStrings.items).doc(item.id).set({
       ...item.toMap(),
       YStrings.colUpdatedAt: now,
       YStrings.colSyncedAt: now,
     }, SetOptions(merge: true));
+    debugPrint("Yash [FirebaseClientImpl] [saveItem] - Item saved: ${item.id}");
   }
 
   // ================= NOTIFICATIONS =================
@@ -116,17 +149,30 @@ class FirebaseClientImpl implements FirebaseClient {
     required String warehouseId,
     required String locationId,
   }) async {
+    debugPrint(
+      "Yash [FirebaseClientImpl] [submitNotification] - type: $type, itemId: $itemId, count: $count, warehouseId: $warehouseId, locationId: $locationId",
+    );
     await _firestore.runTransaction((transaction) async {
       final itemRef = _firestore.collection(YStrings.items).doc(itemId);
       final snapshot = await transaction.get(itemRef);
 
-      if (!snapshot.exists) throw Exception('Item not found.');
+      if (!snapshot.exists) {
+        debugPrint(
+          "Yash [FirebaseClientImpl] [submitNotification] - ERROR: Item not found.",
+        );
+        throw Exception('Item not found.');
+      }
       final data = snapshot.data() ?? {};
       int currentQty = data[YStrings.colQuantity] ?? 0;
       int newQty = currentQty;
 
       if (type == YStrings.transactionOutgoing) {
-        if (count > currentQty) throw Exception(YStrings.errNotEnoughStock);
+        if (count > currentQty) {
+          debugPrint(
+            "Yash [FirebaseClientImpl] [submitNotification] - ERROR: Not enough stock.",
+          );
+          throw Exception(YStrings.errNotEnoughStock);
+        }
         newQty -= count;
       } else {
         newQty += count;
@@ -150,21 +196,36 @@ class FirebaseClientImpl implements FirebaseClient {
             YStrings.colUpdatedAt: DateTime.now().toIso8601String(),
             YStrings.colSyncedAt: DateTime.now().toIso8601String(),
           });
+      debugPrint(
+        "Yash [FirebaseClientImpl] [submitNotification] - Notification submitted with id: $notifId",
+      );
     });
+    debugPrint(
+      "Yash [FirebaseClientImpl] [submitNotification] - Transaction complete",
+    );
   }
 
   @override
   Future<void> saveNotification(NotificationModel notif) async {
+    debugPrint(
+      "Yash [FirebaseClientImpl] [saveNotification] - Saving notification: ${notif.id}",
+    );
     final now = DateTime.now().toIso8601String();
     await _firestore.collection(YStrings.notifications).doc(notif.id).set({
       ...notif.toMap(),
       YStrings.colUpdatedAt: now,
       YStrings.colSyncedAt: now,
     }, SetOptions(merge: true));
+    debugPrint(
+      "Yash [FirebaseClientImpl] [saveNotification] - Notification saved: ${notif.id}",
+    );
   }
 
   @override
   Stream<QuerySnapshot> listenNotifications() {
+    debugPrint(
+      "Yash [FirebaseClientImpl] [listenNotifications] - Listening for notifications",
+    );
     return _firestore
         .collection(YStrings.notifications)
         .orderBy(YStrings.colUpdatedAt, descending: true)
@@ -173,12 +234,20 @@ class FirebaseClientImpl implements FirebaseClient {
 
   @override
   Future<String> getNameById(String collection, String id) async {
+    debugPrint(
+      "Yash [FirebaseClientImpl] [getNameById] - Fetching name for $collection/$id",
+    );
     try {
       final doc = await _firestore.collection(collection).doc(id).get();
-      return doc.exists
+      final name = doc.exists
           ? (doc.data()?[YStrings.colName] ?? 'Unknown')
           : 'Unknown';
-    } catch (_) {
+      debugPrint("Yash [FirebaseClientImpl] [getNameById] - Name: $name");
+      return name;
+    } catch (e) {
+      debugPrint(
+        "Yash [FirebaseClientImpl] [getNameById] - ERROR: $e for $collection/$id",
+      );
       return 'Unknown';
     }
   }
@@ -186,12 +255,18 @@ class FirebaseClientImpl implements FirebaseClient {
   // ================= SYNC METADATA =================
   @override
   Future<Map<String, DateTime?>> fetchSyncMetadata() async {
+    debugPrint(
+      "Yash [FirebaseClientImpl] [fetchSyncMetadata] - Fetching sync metadata",
+    );
     final Map<String, DateTime?> result = {};
     final snapshot = await _firestore.collection(YStrings.syncMetadata).get();
     for (final doc in snapshot.docs) {
       final data = doc.data();
       result[doc.id] = _parseDateTime(data[YStrings.colLastTableUpdatedAt]);
     }
+    debugPrint(
+      "Yash [FirebaseClientImpl] [fetchSyncMetadata] - Found ${result.length} records",
+    );
     return result;
   }
 
@@ -200,6 +275,9 @@ class FirebaseClientImpl implements FirebaseClient {
     String table, {
     DateTime? updatedAfter,
   }) async {
+    debugPrint(
+      "Yash [FirebaseClientImpl] [fetchTableData] - Fetching table: $table, updatedAfter: $updatedAfter",
+    );
     Query query = _firestore.collection(table);
     if (updatedAfter != null) {
       query = query.where(
@@ -207,9 +285,10 @@ class FirebaseClientImpl implements FirebaseClient {
         isGreaterThan: updatedAfter.toIso8601String(),
       );
     }
-
     final snapshot = await query.get();
-
+    debugPrint(
+      "Yash [FirebaseClientImpl] [fetchTableData] - Found ${snapshot.docs.length} records",
+    );
     return snapshot.docs
         .map<Map<String, dynamic>>(
           (doc) => {
@@ -232,8 +311,14 @@ class FirebaseClientImpl implements FirebaseClient {
     required String entity,
     required DateTime lastTableUpdatedAt,
   }) async {
+    debugPrint(
+      "Yash [FirebaseClientImpl] [updateSyncMetadata] - Updating metadata for entity: $entity, time: $lastTableUpdatedAt",
+    );
     await _firestore.collection(YStrings.syncMetadata).doc(entity).set({
       YStrings.colLastTableUpdatedAt: lastTableUpdatedAt.toIso8601String(),
     }, SetOptions(merge: true));
+    debugPrint(
+      "Yash [FirebaseClientImpl] [updateSyncMetadata] - Metadata updated for entity: $entity",
+    );
   }
 }

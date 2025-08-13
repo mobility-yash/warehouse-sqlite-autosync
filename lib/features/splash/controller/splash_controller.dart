@@ -13,30 +13,38 @@ class SplashController extends GetxController {
 
   @override
   void onInit() {
+    debugPrint("Yash [SplashController] [onInit] - Controller initialized");
     super.onInit();
     _initialize();
   }
 
   Future<void> _initialize() async {
-    debugPrint('[SplashController] Initialization started');
+    debugPrint(
+      "Yash [SplashController] [_initialize] - Initialization started",
+    );
 
     final waitMinimumSplashDuration = Future.delayed(
       const Duration(seconds: 2),
     );
 
     final isFirstLaunch = prefs.getBool(YStrings.firstTimeLaunch) ?? true;
-    debugPrint('[SplashController] isFirstLaunch: $isFirstLaunch');
+    debugPrint(
+      "Yash [SplashController] [_initialize] - isFirstLaunch: $isFirstLaunch",
+    );
 
+    // First launch logic
     if (isFirstLaunch) {
       debugPrint(
-        '[SplashController] First launch detected. Setting defaults...',
+        "Yash [SplashController] [_initialize] - First launch detected. Setting default sync states",
       );
-      await prefs.setBool(YStrings.firstTimeLaunch, false);
+      debugPrint(
+        "Yash [SplashController] [_initialize] - Setting '${YStrings.lastInitSyncSuccess}' to false",
+      );
       await prefs.setBool(YStrings.lastInitSyncSuccess, false);
 
       for (final table in YArrays.allTables) {
         debugPrint(
-          '[SplashController] Setting initial sync status for $table to false',
+          "Yash [SplashController] [_initialize] - Setting '${YStrings.syncStatusPrefix}$table' to false",
         );
         await prefs.setBool('${YStrings.syncStatusPrefix}$table', false);
       }
@@ -44,21 +52,26 @@ class SplashController extends GetxController {
       await waitMinimumSplashDuration;
 
       debugPrint(
-        '[SplashController] Navigating to Sync screen for first-time sync',
+        "Yash [SplashController] [_initialize] - Navigating to Sync screen for first-time sync",
       );
       Get.offAllNamed(AppRoutes.sync);
       return;
     }
 
+    // Subsequent launches
     final lastSyncSuccess =
         prefs.getBool(YStrings.lastInitSyncSuccess) ?? false;
-    debugPrint('[SplashController] lastInitSyncSuccess: $lastSyncSuccess');
+    debugPrint(
+      "Yash [SplashController] [_initialize] - lastInitSyncSuccess: $lastSyncSuccess",
+    );
 
     bool anyTableNeedsSync = false;
-
     final tableChecks = <String, bool>{};
 
     try {
+      debugPrint(
+        "Yash [SplashController] [_initialize] - Checking if tables have data in DB",
+      );
       tableChecks[YStrings.locations] = await dbClient
           .isLocationsTableNotEmpty();
       tableChecks[YStrings.warehouses] = await dbClient
@@ -67,11 +80,15 @@ class SplashController extends GetxController {
       tableChecks[YStrings.notifications] = await dbClient
           .isNotificationsTableNotEmpty();
     } catch (e, stack) {
-      debugPrint('[SplashController] ERROR checking DB tables: $e');
+      debugPrint(
+        "Yash [SplashController] [_initialize] - ERROR checking DB tables: $e",
+      );
       debugPrint(stack.toString());
     }
 
-    debugPrint('[SplashController] Table data presence check: $tableChecks');
+    debugPrint(
+      "Yash [SplashController] [_initialize] - Table data check results: $tableChecks",
+    );
 
     for (final entry in tableChecks.entries) {
       final table = entry.key;
@@ -79,7 +96,7 @@ class SplashController extends GetxController {
 
       if (!hasData) {
         debugPrint(
-          '[SplashController] Table "$table" is empty. Marking as not synced.',
+          "Yash [SplashController] [_initialize] - Table '$table' is empty → marking as NOT synced",
         );
         await prefs.setBool('${YStrings.syncStatusPrefix}$table', false);
         anyTableNeedsSync = true;
@@ -87,12 +104,12 @@ class SplashController extends GetxController {
         final status =
             prefs.getBool('${YStrings.syncStatusPrefix}$table') ?? false;
         debugPrint(
-          '[SplashController] Table "$table" has data. Sync status: $status',
+          "Yash [SplashController] [_initialize] - Table '$table' has data → Sync status: $status",
         );
 
         if (!status) {
           debugPrint(
-            '[SplashController] Sync status for "$table" is false. Marking as needing sync.',
+            "Yash [SplashController] [_initialize] - '$table' marked as needing sync",
           );
           anyTableNeedsSync = true;
         }
@@ -103,12 +120,12 @@ class SplashController extends GetxController {
 
     if (!lastSyncSuccess || anyTableNeedsSync) {
       debugPrint(
-        '[SplashController] Sync required. Navigating to Sync screen.',
+        "Yash [SplashController] [_initialize] - Sync required → Navigating to Sync screen lastSyncSuccess: $lastSyncSuccess, anyTableNeedsSync: $anyTableNeedsSync ",
       );
       Get.offAllNamed(AppRoutes.sync);
     } else {
       debugPrint(
-        '[SplashController] All syncs successful. Navigating to Dashboard.',
+        "Yash [SplashController] [_initialize] - All data synced → Navigating to Dashboard",
       );
       Get.offAllNamed(AppRoutes.dashboard);
     }

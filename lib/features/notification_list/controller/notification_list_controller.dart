@@ -30,11 +30,17 @@ class NotificationListController extends GetxController {
 
   @override
   void onInit() {
+    debugPrint(
+      "Yash [NotificationListController] [onInit] - Controller initialized",
+    );
     super.onInit();
     fetchNotifications();
   }
 
   Future<void> fetchNotifications() async {
+    debugPrint(
+      "Yash [NotificationListController] [fetchNotifications] - Fetching notifications",
+    );
     final notifModels = await dbClient.getNotifications();
 
     notifModels.sort((a, b) {
@@ -61,23 +67,41 @@ class NotificationListController extends GetxController {
     }
 
     notifications.value = notifModels;
+    debugPrint(
+      "Yash [NotificationListController] [fetchNotifications] - Loaded ${notifications.length} notifications",
+    );
   }
 
   Future<void> syncUnsyncedData() async {
+    debugPrint(
+      "Yash [NotificationListController] [syncUnsyncedData] - Starting sync",
+    );
     final hasNetwork = await connectivityClient.getSmartStatus();
+    debugPrint(
+      "Yash [NotificationListController] [syncUnsyncedData] - Network status: $hasNetwork",
+    );
     if (!hasNetwork) {
       _showToast(
         "No internet connection. Please try again later.",
         isError: true,
+      );
+      debugPrint(
+        "Yash [NotificationListController] [syncUnsyncedData] - No internet, aborting sync",
       );
       return;
     }
 
     final unsyncedItems = await dbClient.getUnsyncedItems();
     final unsyncedNotifs = await dbClient.getUnsyncedNotifications();
+    debugPrint(
+      "Yash [NotificationListController] [syncUnsyncedData] - Unsynced items: ${unsyncedItems.length}, notifications: ${unsyncedNotifs.length}",
+    );
 
     if (unsyncedItems.isEmpty && unsyncedNotifs.isEmpty) {
       _showToast("Already synced");
+      debugPrint(
+        "Yash [NotificationListController] [syncUnsyncedData] - Nothing to sync",
+      );
       return;
     }
 
@@ -87,24 +111,39 @@ class NotificationListController extends GetxController {
     try {
       for (final item in unsyncedItems) {
         try {
+          debugPrint(
+            "Yash [NotificationListController] [syncUnsyncedData] - Syncing item: ${item.id}",
+          );
           await firebaseClient.saveItem(item);
           await dbClient.markItemsAsSynced([item.id]);
           prefs.setBool('${YStrings.syncStatusPrefix}${YStrings.items}', true);
+          debugPrint(
+            "Yash [NotificationListController] [syncUnsyncedData] - Item synced: ${item.id}",
+          );
         } catch (e) {
           allSuccess = false;
           prefs.setBool('${YStrings.syncStatusPrefix}${YStrings.items}', false);
           _showToast("Failed to sync item: ${e.toString()}", isError: true);
+          debugPrint(
+            "Yash [NotificationListController] [syncUnsyncedData] - Failed to sync item ${item.id}: $e",
+          );
           return;
         }
       }
 
       for (final notif in unsyncedNotifs) {
         try {
+          debugPrint(
+            "Yash [NotificationListController] [syncUnsyncedData] - Syncing notification: ${notif.id}",
+          );
           await firebaseClient.saveNotification(notif);
           await dbClient.markNotificationsAsSynced([notif.id]);
           prefs.setBool(
             '${YStrings.syncStatusPrefix}${YStrings.notifications}',
             true,
+          );
+          debugPrint(
+            "Yash [NotificationListController] [syncUnsyncedData] - Notification synced: ${notif.id}",
           );
         } catch (e) {
           allSuccess = false;
@@ -115,6 +154,9 @@ class NotificationListController extends GetxController {
           _showToast(
             "Notification ${notif.id} failed to sync: $e",
             isError: true,
+          );
+          debugPrint(
+            "Yash [NotificationListController] [syncUnsyncedData] - Failed to sync notification ${notif.id}: $e",
           );
           return;
         }
@@ -131,9 +173,12 @@ class NotificationListController extends GetxController {
           entity: YStrings.notifications,
           lastTableUpdatedAt: now,
         );
+        debugPrint(
+          "Yash [NotificationListController] [syncUnsyncedData] - Remote sync metadata updated",
+        );
       } catch (e) {
         debugPrint(
-          "[NotificationListController] Remote metadata update failed: $e",
+          "Yash [NotificationListController] [syncUnsyncedData] - Remote metadata update failed: $e",
         );
       }
 
@@ -150,15 +195,24 @@ class NotificationListController extends GetxController {
 
       if (allSuccess) {
         _showToast("Data synced successfully");
+        debugPrint(
+          "Yash [NotificationListController] [syncUnsyncedData] - Sync completed successfully",
+        );
       }
 
       await fetchNotifications();
     } finally {
       isSyncing.value = false;
+      debugPrint(
+        "Yash [NotificationListController] [syncUnsyncedData] - Sync process finished",
+      );
     }
   }
 
   Future<String> _getItemName(String itemId) async {
+    debugPrint(
+      "Yash [NotificationListController] [_getItemName] - Fetching name for itemId: $itemId",
+    );
     final db = await dbClient.database;
     final res = await db.query(
       YStrings.items,
@@ -167,12 +221,21 @@ class NotificationListController extends GetxController {
       limit: 1,
     );
     if (res.isNotEmpty) {
+      debugPrint(
+        "Yash [NotificationListController] [_getItemName] - Found item name: ${res.first[YStrings.colName]}",
+      );
       return res.first[YStrings.colName] as String;
     }
+    debugPrint(
+      "Yash [NotificationListController] [_getItemName] - Item name not found, returning id",
+    );
     return itemId;
   }
 
   Future<String> _getWarehouseName(String warehouseId) async {
+    debugPrint(
+      "Yash [NotificationListController] [_getWarehouseName] - Fetching name for warehouseId: $warehouseId",
+    );
     final db = await dbClient.database;
     final res = await db.query(
       YStrings.warehouses,
@@ -181,12 +244,21 @@ class NotificationListController extends GetxController {
       limit: 1,
     );
     if (res.isNotEmpty) {
+      debugPrint(
+        "Yash [NotificationListController] [_getWarehouseName] - Found warehouse name: ${res.first[YStrings.colName]}",
+      );
       return res.first[YStrings.colName] as String;
     }
+    debugPrint(
+      "Yash [NotificationListController] [_getWarehouseName] - Warehouse name not found, returning id",
+    );
     return warehouseId;
   }
 
   Future<String> _getLocationName(String locationId) async {
+    debugPrint(
+      "Yash [NotificationListController] [_getLocationName] - Fetching name for locationId: $locationId",
+    );
     final db = await dbClient.database;
     final res = await db.query(
       YStrings.locations,
@@ -195,12 +267,21 @@ class NotificationListController extends GetxController {
       limit: 1,
     );
     if (res.isNotEmpty) {
+      debugPrint(
+        "Yash [NotificationListController] [_getLocationName] - Found location name: ${res.first[YStrings.colName]}",
+      );
       return res.first[YStrings.colName] as String;
     }
+    debugPrint(
+      "Yash [NotificationListController] [_getLocationName] - Location name not found, returning id",
+    );
     return locationId;
   }
 
   void _showToast(String message, {bool isError = false}) {
+    debugPrint(
+      "Yash [NotificationListController] [_showToast] - ${isError ? 'ERROR' : 'INFO'}: $message",
+    );
     Fluttertoast.showToast(
       msg: message,
       gravity: ToastGravity.BOTTOM,

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:warehouse_data_autosync/core/clients/database/database_client.dart';
@@ -21,16 +22,34 @@ class DatabaseClientImpl extends DatabaseClient {
 
   @override
   Future<Database> get database async {
-    if (_database != null) return _database!;
-    if (_openingCompleter != null) return _openingCompleter!.future;
+    if (_database != null) {
+      debugPrint(
+        "Yash [DatabaseClientImpl] [database] - Returning existing database instance",
+      );
+      return _database!;
+    }
+    if (_openingCompleter != null) {
+      debugPrint(
+        "Yash [DatabaseClientImpl] [database] - Database opening in progress, awaiting...",
+      );
+      return _openingCompleter!.future;
+    }
 
+    debugPrint("Yash [DatabaseClientImpl] [database] - Opening database...");
     _openingCompleter = Completer();
     try {
       final db = await _initDatabase();
       _database = db;
       _openingCompleter!.complete(db);
+      debugPrint(
+        "Yash [DatabaseClientImpl] [database] - Database opened successfully",
+      );
       return db;
     } catch (e, st) {
+      debugPrint(
+        "Yash [DatabaseClientImpl] [database] - Error opening database: $e",
+      );
+      debugPrint(st.toString());
       _openingCompleter!.completeError(e, st);
       rethrow;
     } finally {
@@ -39,6 +58,9 @@ class DatabaseClientImpl extends DatabaseClient {
   }
 
   Future<Database> _initDatabase() async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [_initDatabase] - Initializing database",
+    );
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, _dbName);
     return openDatabase(
@@ -49,6 +71,7 @@ class DatabaseClientImpl extends DatabaseClient {
   }
 
   Future<void> _onCreate(Database db) async {
+    debugPrint("Yash [DatabaseClientImpl] [_onCreate] - Creating tables...");
     // Locations
     await db.execute('''
       CREATE TABLE ${YStrings.locations} (
@@ -114,10 +137,16 @@ class DatabaseClientImpl extends DatabaseClient {
       );
     ''');
 
+    debugPrint(
+      "Yash [DatabaseClientImpl] [_onCreate] - Tables created successfully",
+    );
     await _insertInitialSyncMetadataWithDb(db);
   }
 
   Future<void> _insertInitialSyncMetadataWithDb(Database db) async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [_insertInitialSyncMetadataWithDb] - Inserting initial sync metadata",
+    );
     final now = DateTime.now().toIso8601String();
     final batch = db.batch();
     for (final table in [
@@ -126,17 +155,26 @@ class DatabaseClientImpl extends DatabaseClient {
       YStrings.items,
       YStrings.notifications,
     ]) {
+      debugPrint(
+        "Yash [DatabaseClientImpl] [_insertInitialSyncMetadataWithDb] - Adding metadata for table: $table",
+      );
       batch.insert(YStrings.syncMetadata, {
         YStrings.colEntity: table,
-        YStrings.colLastLocalUpdatedAt: now,
-        YStrings.colLastRemoteUpdatedAt: now,
+        YStrings.colLastLocalUpdatedAt: null,
+        YStrings.colLastRemoteUpdatedAt: null,
       }, conflictAlgorithm: ConflictAlgorithm.ignore);
     }
     await batch.commit(noResult: true);
+    debugPrint(
+      "Yash [DatabaseClientImpl] [_insertInitialSyncMetadataWithDb] - Metadata insertion complete",
+    );
   }
 
   @override
   Future<void> insertInitialSyncMetadata() async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [insertInitialSyncMetadata] - Called",
+    );
     final db = await database;
     await _insertInitialSyncMetadataWithDb(db);
   }
@@ -144,32 +182,43 @@ class DatabaseClientImpl extends DatabaseClient {
   // ================== Items ==================
   @override
   Future<void> insertItems(List<ItemModel> items) async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [insertItems] - Inserting ${items.length} items",
+    );
     final db = await database;
     final batch = db.batch();
     for (final item in items) {
-      final map = item.toMap();
-      map[YStrings.colSyncedAt] = map[YStrings.colSyncedAt] ?? null;
       batch.insert(
         YStrings.items,
-        map,
+        item.toMap(),
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     }
     await batch.commit(noResult: true);
+    debugPrint("Yash [DatabaseClientImpl] [insertItems] - Insert complete");
   }
 
   @override
   Future<List<ItemModel>> getUnsyncedItems() async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [getUnsyncedItems] - Fetching unsynced items",
+    );
     final db = await database;
     final maps = await db.query(
       YStrings.items,
       where: '${YStrings.colSyncedAt} IS NULL',
+    );
+    debugPrint(
+      "Yash [DatabaseClientImpl] [getUnsyncedItems] - Found ${maps.length} items",
     );
     return maps.map(ItemModel.fromDb).toList();
   }
 
   @override
   Future<void> markItemsAsSynced(List<String> ids) async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [markItemsAsSynced] - Marking ${ids.length} items as synced",
+    );
     if (ids.isEmpty) return;
     final now = DateTime.now().toIso8601String();
     final db = await database;
@@ -183,41 +232,64 @@ class DatabaseClientImpl extends DatabaseClient {
       );
     }
     await batch.commit(noResult: true);
+    debugPrint(
+      "Yash [DatabaseClientImpl] [markItemsAsSynced] - Completed marking items as synced",
+    );
   }
 
   @override
   Future<List<ItemModel>> getItemsByWarehouseId(String warehouseId) async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [getItemsByWarehouseId] - Fetching items for warehouseId: $warehouseId",
+    );
     final db = await database;
     final maps = await db.query(
       YStrings.items,
       where: '${YStrings.colWarehouseId} = ?',
       whereArgs: [warehouseId],
     );
+    debugPrint(
+      "Yash [DatabaseClientImpl] [getItemsByWarehouseId] - Found ${maps.length} items",
+    );
     return maps.map(ItemModel.fromDb).toList();
   }
 
   @override
   Future<bool> isItemsTableNotEmpty() async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [isItemsTableNotEmpty] - Checking item table",
+    );
     try {
       final db = await database;
       final result = await db.rawQuery(
         'SELECT EXISTS(SELECT 1 FROM ${YStrings.items} LIMIT 1)',
       );
-      return Sqflite.firstIntValue(result) == 1;
-    } catch (_) {
+      final exists = Sqflite.firstIntValue(result) == 1;
+      debugPrint(
+        "Yash [DatabaseClientImpl] [isItemsTableNotEmpty] - Exists: $exists",
+      );
+      return exists;
+    } catch (e) {
+      debugPrint(
+        "Yash [DatabaseClientImpl] [isItemsTableNotEmpty] - Error: $e",
+      );
       return false;
     }
   }
 
   @override
   Future<void> clearItems() async {
+    debugPrint("Yash [DatabaseClientImpl] [clearItems] - Clearing items table");
     final db = await database;
     await db.delete(YStrings.items);
+    debugPrint("Yash [DatabaseClientImpl] [clearItems] - Items table cleared");
   }
 
-  // ================== Locations ==================
   @override
   Future<void> insertLocations(List<LocationModel> locations) async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [insertLocations] - Inserting ${locations.length} locations",
+    );
     final db = await database;
     final batch = db.batch();
     for (final loc in locations) {
@@ -228,37 +300,60 @@ class DatabaseClientImpl extends DatabaseClient {
       );
     }
     await batch.commit(noResult: true);
+    debugPrint("Yash [DatabaseClientImpl] [insertLocations] - Insert complete");
   }
 
   @override
   Future<List<LocationModel>> getLocations() async {
+    debugPrint("Yash [DatabaseClientImpl] [getLocations] - Fetching locations");
     final db = await database;
     final maps = await db.query(YStrings.locations);
+    debugPrint(
+      "Yash [DatabaseClientImpl] [getLocations] - Found ${maps.length} records",
+    );
     return maps.map(LocationModel.fromDb).toList();
   }
 
   @override
   Future<bool> isLocationsTableNotEmpty() async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [isLocationsTableNotEmpty] - Checking locations table",
+    );
     try {
       final db = await database;
       final result = await db.rawQuery(
         'SELECT EXISTS(SELECT 1 FROM ${YStrings.locations} LIMIT 1)',
       );
-      return Sqflite.firstIntValue(result) == 1;
-    } catch (_) {
+      final exists = Sqflite.firstIntValue(result) == 1;
+      debugPrint(
+        "Yash [DatabaseClientImpl] [isLocationsTableNotEmpty] - Exists: $exists",
+      );
+      return exists;
+    } catch (e) {
+      debugPrint(
+        "Yash [DatabaseClientImpl] [isLocationsTableNotEmpty] - Error: $e",
+      );
       return false;
     }
   }
 
   @override
   Future<void> clearLocations() async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [clearLocations] - Clearing locations table",
+    );
     final db = await database;
     await db.delete(YStrings.locations);
+    debugPrint(
+      "Yash [DatabaseClientImpl] [clearLocations] - Locations table cleared",
+    );
   }
 
-  // ================== Warehouses ==================
   @override
   Future<void> insertWarehouses(List<WarehouseModel> warehouses) async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [insertWarehouses] - Inserting ${warehouses.length} warehouses",
+    );
     final db = await database;
     final batch = db.batch();
     for (final w in warehouses) {
@@ -269,47 +364,77 @@ class DatabaseClientImpl extends DatabaseClient {
       );
     }
     await batch.commit(noResult: true);
+    debugPrint(
+      "Yash [DatabaseClientImpl] [insertWarehouses] - Insert complete",
+    );
   }
 
   @override
   Future<List<WarehouseModel>> getWarehousesByLocationId(
     String locationId,
   ) async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [getWarehousesByLocationId] - Fetching for locationId: $locationId",
+    );
     final db = await database;
     final maps = await db.query(
       YStrings.warehouses,
       where: '${YStrings.colLocationId} = ?',
       whereArgs: [locationId],
     );
+    debugPrint(
+      "Yash [DatabaseClientImpl] [getWarehousesByLocationId] - Found ${maps.length} records",
+    );
     return maps.map(WarehouseModel.fromDb).toList();
   }
 
   @override
   Future<bool> isWarehousesTableNotEmpty() async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [isWarehousesTableNotEmpty] - Checking warehouses table",
+    );
     try {
       final db = await database;
       final result = await db.rawQuery(
         'SELECT EXISTS(SELECT 1 FROM ${YStrings.warehouses} LIMIT 1)',
       );
-      return Sqflite.firstIntValue(result) == 1;
-    } catch (_) {
+      final exists = Sqflite.firstIntValue(result) == 1;
+      debugPrint(
+        "Yash [DatabaseClientImpl] [isWarehousesTableNotEmpty] - Exists: $exists",
+      );
+      return exists;
+    } catch (e) {
+      debugPrint(
+        "Yash [DatabaseClientImpl] [isWarehousesTableNotEmpty] - Error: $e",
+      );
       return false;
     }
   }
 
   @override
   Future<void> clearWarehouses() async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [clearWarehouses] - Clearing warehouses table",
+    );
     final db = await database;
     await db.delete(YStrings.warehouses);
+    debugPrint(
+      "Yash [DatabaseClientImpl] [clearWarehouses] - Warehouses table cleared",
+    );
   }
 
-  // ================== Notifications ==================
   @override
   Future<List<NotificationModel>> getNotifications() async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [getNotifications] - Fetching notifications",
+    );
     final db = await database;
     final maps = await db.query(
       YStrings.notifications,
       orderBy: '${YStrings.colUpdatedAt} DESC',
+    );
+    debugPrint(
+      "Yash [DatabaseClientImpl] [getNotifications] - Found ${maps.length} records",
     );
     return maps.map(NotificationModel.fromDb).toList();
   }
@@ -318,32 +443,45 @@ class DatabaseClientImpl extends DatabaseClient {
   Future<void> insertNotifications(
     List<NotificationModel> notifications,
   ) async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [insertNotifications] - Inserting ${notifications.length} notifications",
+    );
     final db = await database;
     final batch = db.batch();
     for (final n in notifications) {
-      final map = n.toMap();
-      map[YStrings.colSyncedAt] = map[YStrings.colSyncedAt] ?? null;
       batch.insert(
         YStrings.notifications,
-        map,
+        n.toMap(),
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     }
     await batch.commit(noResult: true);
+    debugPrint(
+      "Yash [DatabaseClientImpl] [insertNotifications] - Insert complete",
+    );
   }
 
   @override
   Future<List<NotificationModel>> getUnsyncedNotifications() async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [getUnsyncedNotifications] - Fetching unsynced notifications",
+    );
     final db = await database;
     final maps = await db.query(
       YStrings.notifications,
       where: '${YStrings.colSyncedAt} IS NULL',
+    );
+    debugPrint(
+      "Yash [DatabaseClientImpl] [getUnsyncedNotifications] - Found ${maps.length} records",
     );
     return maps.map(NotificationModel.fromDb).toList();
   }
 
   @override
   Future<void> markNotificationsAsSynced(List<String> ids) async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [markNotificationsAsSynced] - Marking ${ids.length} notifications as synced",
+    );
     if (ids.isEmpty) return;
     final now = DateTime.now().toIso8601String();
     final db = await database;
@@ -357,39 +495,63 @@ class DatabaseClientImpl extends DatabaseClient {
       );
     }
     await batch.commit(noResult: true);
+    debugPrint(
+      "Yash [DatabaseClientImpl] [markNotificationsAsSynced] - Completed marking as synced",
+    );
   }
 
   @override
   Future<bool> isNotificationsTableNotEmpty() async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [isNotificationsTableNotEmpty] - Checking notifications table",
+    );
     try {
       final db = await database;
       final result = await db.rawQuery(
         'SELECT EXISTS(SELECT 1 FROM ${YStrings.notifications} LIMIT 1)',
       );
-      return Sqflite.firstIntValue(result) == 1;
-    } catch (_) {
+      final exists = Sqflite.firstIntValue(result) == 1;
+      debugPrint(
+        "Yash [DatabaseClientImpl] [isNotificationsTableNotEmpty] - Exists: $exists",
+      );
+      return exists;
+    } catch (e) {
+      debugPrint(
+        "Yash [DatabaseClientImpl] [isNotificationsTableNotEmpty] - Error: $e",
+      );
       return false;
     }
   }
 
   @override
   Future<void> clearNotifications() async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [clearNotifications] - Clearing notifications table",
+    );
     final db = await database;
     await db.delete(YStrings.notifications);
+    debugPrint(
+      "Yash [DatabaseClientImpl] [clearNotifications] - Notifications table cleared",
+    );
   }
 
-  // ================== Sync Metadata ==================
   @override
   Future<void> updateLastLocalUpdatedAt({
     required String entity,
     required String lastLocalUpdatedAt,
   }) async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [updateLastLocalUpdatedAt] - Entity: $entity, Time: $lastLocalUpdatedAt",
+    );
     final db = await database;
     await db.update(
       YStrings.syncMetadata,
       {YStrings.colLastLocalUpdatedAt: lastLocalUpdatedAt},
       where: '${YStrings.colEntity} = ?',
       whereArgs: [entity],
+    );
+    debugPrint(
+      "Yash [DatabaseClientImpl] [updateLastLocalUpdatedAt] - Update complete",
     );
   }
 
@@ -398,12 +560,18 @@ class DatabaseClientImpl extends DatabaseClient {
     required String entity,
     required String lastRemoteUpdatedAt,
   }) async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [updateLastRemoteUpdatedAt] - Entity: $entity, Time: $lastRemoteUpdatedAt",
+    );
     final db = await database;
     await db.update(
       YStrings.syncMetadata,
       {YStrings.colLastRemoteUpdatedAt: lastRemoteUpdatedAt},
       where: '${YStrings.colEntity} = ?',
       whereArgs: [entity],
+    );
+    debugPrint(
+      "Yash [DatabaseClientImpl] [updateLastRemoteUpdatedAt] - Update complete",
     );
   }
 
@@ -412,6 +580,9 @@ class DatabaseClientImpl extends DatabaseClient {
     required String entity,
     required String updatedAt,
   }) async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [updateBothLocalAndRemoteTimestamps] - Entity: $entity, UpdatedAt: $updatedAt",
+    );
     final db = await database;
     await db.update(
       YStrings.syncMetadata,
@@ -422,15 +593,27 @@ class DatabaseClientImpl extends DatabaseClient {
       where: '${YStrings.colEntity} = ?',
       whereArgs: [entity],
     );
+    debugPrint(
+      "Yash [DatabaseClientImpl] [updateBothLocalAndRemoteTimestamps] - Update complete",
+    );
   }
 
   @override
   Future<SyncMetadataModel?> getSyncMetadata(String entity) async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [getSyncMetadata] - Fetching metadata for entity: $entity",
+    );
     final db = await database;
     final result = await db.query(
       YStrings.syncMetadata,
       where: '${YStrings.colEntity} = ?',
       whereArgs: [entity],
+    );
+    debugPrint(
+      "Yash [DatabaseClientImpl] [getSyncMetadata] - Result is: $result",
+    );
+    debugPrint(
+      "Yash [DatabaseClientImpl] [getSyncMetadata] - Result found: ${result.isNotEmpty}",
     );
     if (result.isNotEmpty) {
       return SyncMetadataModel.fromDb(result.first);
@@ -440,55 +623,91 @@ class DatabaseClientImpl extends DatabaseClient {
 
   @override
   Future<bool> isSyncMetadataTableNotEmpty() async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [isSyncMetadataTableNotEmpty] - Checking sync metadata table",
+    );
     try {
       final db = await database;
       final result = await db.rawQuery(
         'SELECT EXISTS(SELECT 1 FROM ${YStrings.syncMetadata} LIMIT 1)',
       );
-      return Sqflite.firstIntValue(result) == 1;
-    } catch (_) {
+      final exists = Sqflite.firstIntValue(result) == 1;
+      debugPrint(
+        "Yash [DatabaseClientImpl] [isSyncMetadataTableNotEmpty] - Exists: $exists",
+      );
+      return exists;
+    } catch (e) {
+      debugPrint(
+        "Yash [DatabaseClientImpl] [isSyncMetadataTableNotEmpty] - Error: $e",
+      );
       return false;
     }
   }
 
   @override
   Future<void> clearSyncMetadata() async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [clearSyncMetadata] - Clearing sync metadata table",
+    );
     final db = await database;
     await db.delete(YStrings.syncMetadata);
+    debugPrint("Yash [DatabaseClientImpl] [clearSyncMetadata] - Table cleared");
   }
 
   @override
-  Future<void> updateLocationsSync(String lastUpdatedAt) =>
-      updateBothLocalAndRemoteTimestamps(
-        entity: YStrings.locations,
-        updatedAt: lastUpdatedAt,
-      );
+  Future<void> updateLocationsSync(String lastUpdatedAt) {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [updateLocationsSync] - Time: $lastUpdatedAt",
+    );
+    return updateBothLocalAndRemoteTimestamps(
+      entity: YStrings.locations,
+      updatedAt: lastUpdatedAt,
+    );
+  }
 
   @override
-  Future<void> updateWarehousesSync(String lastUpdatedAt) =>
-      updateBothLocalAndRemoteTimestamps(
-        entity: YStrings.warehouses,
-        updatedAt: lastUpdatedAt,
-      );
+  Future<void> updateWarehousesSync(String lastUpdatedAt) {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [updateWarehousesSync] - Time: $lastUpdatedAt",
+    );
+    return updateBothLocalAndRemoteTimestamps(
+      entity: YStrings.warehouses,
+      updatedAt: lastUpdatedAt,
+    );
+  }
 
   @override
-  Future<void> updateItemsSync(String lastUpdatedAt) =>
-      updateBothLocalAndRemoteTimestamps(
-        entity: YStrings.items,
-        updatedAt: lastUpdatedAt,
-      );
+  Future<void> updateItemsSync(String lastUpdatedAt) {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [updateItemsSync] - Time: $lastUpdatedAt",
+    );
+    return updateBothLocalAndRemoteTimestamps(
+      entity: YStrings.items,
+      updatedAt: lastUpdatedAt,
+    );
+  }
 
   @override
-  Future<void> updateNotificationsSync(String lastUpdatedAt) =>
-      updateBothLocalAndRemoteTimestamps(
-        entity: YStrings.notifications,
-        updatedAt: lastUpdatedAt,
-      );
+  Future<void> updateNotificationsSync(String lastUpdatedAt) {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [updateNotificationsSync] - Time: $lastUpdatedAt",
+    );
+    return updateBothLocalAndRemoteTimestamps(
+      entity: YStrings.notifications,
+      updatedAt: lastUpdatedAt,
+    );
+  }
 
   @override
   Future<Map<String, SyncMetadataModel>> getAllSyncMetadata() async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [getAllSyncMetadata] - Fetching all sync metadata",
+    );
     final db = await database;
     final rows = await db.query(YStrings.syncMetadata);
+    debugPrint(
+      "Yash [DatabaseClientImpl] [getAllSyncMetadata] - Found ${rows.length} records",
+    );
     return {
       for (final row in rows)
         row[YStrings.colEntity] as String: SyncMetadataModel.fromDb(row),
@@ -500,6 +719,9 @@ class DatabaseClientImpl extends DatabaseClient {
     String table,
     List<Map<String, dynamic>> data,
   ) async {
+    debugPrint(
+      "Yash [DatabaseClientImpl] [insertOrUpdateTable] - Inserting/Updating ${data.length} records into $table",
+    );
     if (data.isEmpty) return;
     final db = await database;
     final batch = db.batch();
@@ -507,5 +729,8 @@ class DatabaseClientImpl extends DatabaseClient {
       batch.insert(table, row, conflictAlgorithm: ConflictAlgorithm.replace);
     }
     await batch.commit(noResult: true);
+    debugPrint(
+      "Yash [DatabaseClientImpl] [insertOrUpdateTable] - Operation complete for table: $table",
+    );
   }
 }

@@ -92,4 +92,11 @@ class ItemModel {
 
   // Helper: check if this record is synced
   bool get isSynced => syncedAt != null;
+
+  @override
+  String toString() {
+    return 'ItemModel(id: $id, name: $name, warehouseId: $warehouseId, '
+        'locationId: $locationId, quantity: $quantity, '
+        'updatedAt: $updatedAt, syncedAt: $syncedAt)';
+  }
 }

@@ -70,4 +70,11 @@ class WarehouseModel {
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
+
+  @override
+  String toString() {
+    return 'Yash [WarehouseModel] - '
+        'id="$id", name="$name", locationId="$locationId", '
+        'address="$address", updatedAt="$updatedAt"';
+  }
 }
